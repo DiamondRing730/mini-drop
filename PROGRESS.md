@@ -27,7 +27,10 @@
 - ✅ **火焰图 + 热点**：791 样本，TopN 准确命中负载热点（`fib` 58.9%+17.7%、`warm_path`、`crunch_numbers`，含 file:line）
 - ✅ **异常路径（坏 PID）**：target_pid=999999 → 任务 `FAILED`，reason=`target pid 999999 does not exist`
 - ✅ **Web**：`http://localhost:8080` 返回 200（nginx 反代 /api 到 server），新增 Agent 审计日志面板
-- ✅ **单测**：`pytest tests/unit` → 16 passed；覆盖率 79%（app+analyzer）
+- ✅ **eBPF 采集器（扩展，真跑）**：bpftrace 抓 read/write syscall 延迟分布；一次采集 **130,333** 个事件，
+  现场 `dd` 制造 IO 后 `dd` 进程出现在 by_comm 第 2（7470 次），延迟直方图（log2 桶）正常；已修跨 CPU `nsecs` 下溢。
+  Web 用独立的 ECharts 分布图展示（区别于火焰图）
+- ✅ **单测**：`pytest tests/unit`（WSL Ubuntu 原生 venv）→ **17 passed；覆盖率 79%**（app+analyzer，含 eBPF 解析）
 - ✅ **Agent 离线恢复 + 审计日志**：停 agent → 30s 后 `online=false` 且写 `OFFLINE` 审计；重启 → 3s 内 `online=true` 且写 `RECOVER`。审计轨迹 `REGISTER→OFFLINE→RECOVER` 经新接口 `GET /api/v1/agents/{id}/events` 可见
 - ℹ️ 3 条 E2E 用例（正常/坏PID/离线恢复）均已写好（`tests/e2e/`）；正常+坏PID+离线恢复均已手动实跑通过。pytest 形式待在带 pip 的 Python/容器里跑一遍
 
@@ -56,10 +59,12 @@ feat(server):   data model + task state machine with reasoned transitions
 chore:          scaffold repo with README, gitignore and LF normalization
 ```
 
-## 下一步（未开始，按优先级）
+## 下一步（按优先级）
 
-1. **补跑 Agent 离线恢复 E2E**（容器/venv 里跑 `pytest tests/e2e`），凑齐 3 条 E2E 全绿。
+1. **跑 3 条 E2E**（WSL 原生 venv：`/tmp/mdvenv/bin/python -m pytest tests/e2e`）凑齐全绿（正常/坏PID/离线恢复均已手动通过）。
 2. **Continuous Profiling**：常驻低频采样 + 切片 + 时间轴回看 5min 窗口。
-3. **eBPF 采集器**：bpftrace + 真实 tracepoint（block/sched），现场 fio/stress-ng 触发看延迟分布变化。
-4. **智能归因（加分）**：结构化喂 LLM、LLM 只能调自定义工具、产可验证结论 + 评测报告。
-5. **设计文档（≤10页）+ 演示视频（≤15min）**。
+3. **智能归因（加分）**：结构化喂 LLM、LLM 只能调自定义工具、产可验证结论 + 评测报告。
+4. **设计文档（≤10页）+ 演示视频（≤15min）**。
+
+> ✅ eBPF 采集器已完成（见上）。环境提示：WSL Ubuntu 可原生跑 `make` / `pytest`；
+> 镜像构建在 Windows 侧或配好 registry mirror 的网络下进行（Docker Hub 直连被污染）。
