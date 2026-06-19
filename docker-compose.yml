@@ -1,0 +1,86 @@
+# Mini-Drop full stack. `docker compose up -d --build` brings up everything;
+# `make demo` additionally fires a sample profiling task.
+services:
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: minidrop
+      POSTGRES_PASSWORD: minidrop
+      POSTGRES_DB: minidrop
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U minidrop"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  server:
+    build: ./server
+    environment:
+      MINIDROP_DATABASE_URL: postgresql+psycopg2://minidrop:minidrop@postgres:5432/minidrop
+      MINIDROP_ARTIFACTS_DIR: /data/artifacts
+    volumes:
+      - md_data:/data
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8000/healthz').status==200 else sys.exit(1)\""]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  agent:
+    build: ./agent
+    # privileged + pid:host let the agent profile host processes with perf/py-spy;
+    # the relaxed seccomp/apparmor profiles are required for ptrace and perf_event_open.
+    privileged: true
+    pid: "host"
+    cap_add: ["SYS_PTRACE", "SYS_ADMIN", "PERFMON"]
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+    environment:
+      MINIDROP_SERVER_URL: http://server:8000
+      MINIDROP_ARTIFACTS_DIR: /data/artifacts
+      MINIDROP_PERF_EVENT: cpu-clock
+    volumes:
+      - md_data:/data
+    depends_on:
+      server:
+        condition: service_healthy
+
+  analyzer:
+    build: ./analyzer
+    environment:
+      MINIDROP_SERVER_URL: http://server:8000
+      MINIDROP_ARTIFACTS_DIR: /data/artifacts
+    volumes:
+      - md_data:/data
+    depends_on:
+      server:
+        condition: service_healthy
+
+  # A CPU-bound Python process used as the default profiling target for `make demo`.
+  workload:
+    image: python:3.12-slim
+    container_name: minidrop-workload
+    command: ["python", "/demo/workload.py"]
+    volumes:
+      - ./demo:/demo:ro
+    restart: unless-stopped
+
+  web:
+    build: ./web
+    ports:
+      - "8080:80"
+    depends_on:
+      server:
+        condition: service_healthy
+
+volumes:
+  pg_data:
+  md_data:
