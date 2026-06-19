@@ -10,12 +10,13 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..db import get_session
-from ..enums import AgentEventType, AnalysisStatus, TaskStatus
+from ..enums import AgentEventType, AnalysisStatus, TaskMode, TaskStatus
 from ..logging_config import log_event
-from ..models import Agent, AgentEvent, Task
+from ..models import Agent, AgentEvent, ProfileChunk, Task
 from ..schemas import (
     AgentEventOut,
     AgentOut,
+    ChunkReport,
     HeartbeatRequest,
     HeartbeatResponse,
     ResultReport,
@@ -107,6 +108,8 @@ def heartbeat(req: HeartbeatRequest, session: Session = Depends(get_session)):
             duration_sec=claimed.duration_sec,
             frequency_hz=claimed.frequency_hz,
             profiler_type=claimed.profiler_type,
+            mode=claimed.mode,
+            slice_sec=claimed.slice_sec,
         )
         log_event(logger, "task dispatched", tid=claimed.tid, agent_id=req.agent_id)
 
@@ -143,8 +146,13 @@ def report_result(tid: str, req: ResultReport, session: Session = Depends(get_se
                 transition(session, task, TaskStatus.UPLOADING.value, "result received from agent")
             task.result_files = req.result_files or {}
             transition(session, task, TaskStatus.DONE.value, "collection artifact stored")
-            task.analysis_status = AnalysisStatus.PENDING.value
-            task.analysis_reason = "queued for analysis"
+            if task.mode == TaskMode.CONTINUOUS.value:
+                # Continuous sessions have no single flamegraph; windows render on demand.
+                task.analysis_status = AnalysisStatus.DONE.value
+                task.analysis_reason = "continuous session; windows rendered on demand"
+            else:
+                task.analysis_status = AnalysisStatus.PENDING.value
+                task.analysis_reason = "queued for analysis"
         else:
             task.error_message = req.error_message
             transition(session, task, TaskStatus.FAILED.value,
@@ -154,3 +162,15 @@ def report_result(tid: str, req: ResultReport, session: Session = Depends(get_se
     session.commit()
     log_event(logger, "task result", tid=tid, success=req.success, status=task.status)
     return {"tid": tid, "status": task.status}
+
+
+@router.post("/agent/tasks/{tid}/chunk", response_model=dict)
+def report_chunk(tid: str, req: ChunkReport, session: Session = Depends(get_session)):
+    """Record one slice of a continuous-profiling session."""
+    _get_task_or_404(session, tid)
+    session.add(ProfileChunk(
+        tid=tid, start_ts=req.start_ts, end_ts=req.end_ts,
+        folded_file=req.folded_file, samples=req.samples,
+    ))
+    session.commit()
+    return {"tid": tid, "recorded": req.folded_file}

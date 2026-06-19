@@ -34,6 +34,11 @@ ALLOWED_TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
 }
 
 
+class TaskMode(str, enum.Enum):
+    ONESHOT = "oneshot"        # one capture -> one flamegraph
+    CONTINUOUS = "continuous"  # resident low-frequency slices -> timeline + window replay
+
+
 class AgentEventType(str, enum.Enum):
     REGISTER = "REGISTER"  # first time we ever saw this agent
     OFFLINE = "OFFLINE"    # missed heartbeats past the threshold

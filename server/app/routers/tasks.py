@@ -3,16 +3,17 @@ import logging
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import flame
 from ..config import settings
 from ..db import get_session
 from ..enums import TaskStatus
 from ..logging_config import log_event
-from ..models import Task
-from ..schemas import CreateTaskRequest, TaskDetail, TaskSummary
+from ..models import ProfileChunk, Task
+from ..schemas import CreateTaskRequest, TaskDetail, TaskSummary, TimelineEntry
 from ..state import record_initial
 from ..util import short_id, utcnow
 
@@ -30,6 +31,8 @@ def create_task(req: CreateTaskRequest, session: Session = Depends(get_session))
         duration_sec=req.duration_sec,
         frequency_hz=req.frequency_hz,
         profiler_type=req.profiler_type.value,
+        mode=req.mode.value,
+        slice_sec=req.slice_sec,
         agent_id=req.agent_id,
         status=TaskStatus.PENDING.value,
         status_reason="task created by user",
@@ -90,3 +93,44 @@ def get_artifact(tid: str, filename: str, session: Session = Depends(get_session
         raise HTTPException(status_code=404, detail=f"artifact {safe} not found")
     media = "image/svg+xml" if safe.endswith(".svg") else None
     return FileResponse(path, media_type=media, filename=safe)
+
+
+# ---- continuous profiling: timeline + on-demand window flamegraph ----
+
+
+@router.get("/tasks/{tid}/timeline", response_model=list[TimelineEntry])
+def timeline(tid: str, session: Session = Depends(get_session)):
+    """All captured slices of a continuous session, ordered in time."""
+    _get_task_or_404(session, tid)
+    return session.execute(
+        select(ProfileChunk).where(ProfileChunk.tid == tid).order_by(ProfileChunk.start_ts)
+    ).scalars().all()
+
+
+@router.get("/tasks/{tid}/window")
+def window_flame(
+    tid: str,
+    from_ts: float = Query(alias="from"),
+    to_ts: float = Query(alias="to"),
+    session: Session = Depends(get_session),
+):
+    """Render a flamegraph for [from, to] by merging all chunks overlapping that window."""
+    _get_task_or_404(session, tid)
+    chunks = session.execute(
+        select(ProfileChunk).where(
+            ProfileChunk.tid == tid,
+            ProfileChunk.start_ts <= to_ts,
+            ProfileChunk.end_ts >= from_ts,
+        ).order_by(ProfileChunk.start_ts)
+    ).scalars().all()
+
+    paths = [os.path.join(settings.artifacts_dir, tid, "chunks", c.folded_file) for c in chunks]
+    folded = flame.merge_folded_files(paths)
+    if folded:
+        tree = flame.build_tree(folded, root_name="window")
+        title = f"window {int(from_ts)}–{int(to_ts)} ({len(chunks)} slices, {tree['value']} samples)"
+    else:
+        tree = {"name": "no data in window", "value": 0, "children": []}
+        title = "no data in selected window"
+    svg = flame.render_svg(tree, title=title)
+    return Response(content=svg, media_type="image/svg+xml")

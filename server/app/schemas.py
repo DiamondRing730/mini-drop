@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .enums import ProfilerType
+from .enums import ProfilerType, TaskMode
 
 # ---------- frontend: create / view tasks ----------
 
@@ -12,9 +12,11 @@ class CreateTaskRequest(BaseModel):
     name: str = Field(default="", max_length=255)
     # 0 is allowed and means "system-wide" for the eBPF collector; perf/py-spy reject it.
     target_pid: int = Field(ge=0)
-    duration_sec: int = Field(default=10, ge=1, le=600)
+    duration_sec: int = Field(default=10, ge=1, le=3600)  # also = session length when continuous
     frequency_hz: int = Field(default=99, ge=1, le=999)
     profiler_type: ProfilerType = ProfilerType.PERF
+    mode: TaskMode = TaskMode.ONESHOT
+    slice_sec: int = Field(default=10, ge=1, le=60)  # per-capture length when continuous
     agent_id: str | None = None  # if None, any online agent may claim it
 
 
@@ -32,6 +34,7 @@ class TaskSummary(BaseModel):
     name: str
     target_pid: int
     profiler_type: str
+    mode: str
     status: str
     status_reason: str
     analysis_status: str
@@ -85,6 +88,8 @@ class TaskDispatch(BaseModel):
     duration_sec: int
     frequency_hz: int
     profiler_type: str
+    mode: str
+    slice_sec: int
 
 
 class HeartbeatResponse(BaseModel):
@@ -96,6 +101,20 @@ class HeartbeatResponse(BaseModel):
 class StatusReport(BaseModel):
     status: str
     reason: str = ""
+
+
+class ChunkReport(BaseModel):
+    start_ts: float
+    end_ts: float
+    folded_file: str
+    samples: int = 0
+
+
+class TimelineEntry(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    start_ts: float
+    end_ts: float
+    samples: int
 
 
 class ResultReport(BaseModel):

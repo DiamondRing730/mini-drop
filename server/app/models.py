@@ -33,6 +33,10 @@ class Task(Base):
     frequency_hz: Mapped[int] = mapped_column(Integer, default=99)
     profiler_type: Mapped[str] = mapped_column(String(16))
 
+    # oneshot (default) or continuous; slice_sec is the per-capture length when continuous.
+    mode: Mapped[str] = mapped_column(String(16), default="oneshot")
+    slice_sec: Mapped[int] = mapped_column(Integer, default=10)
+
     agent_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     status: Mapped[str] = mapped_column(String(16), default=TaskStatus.PENDING.value, index=True)
@@ -66,6 +70,19 @@ class TaskStateTransition(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     task: Mapped["Task"] = relationship(back_populates="transitions")
+
+
+class ProfileChunk(Base):
+    """One time-sliced capture of a continuous-profiling session (folded stacks on disk)."""
+    __tablename__ = "profile_chunks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tid: Mapped[str] = mapped_column(ForeignKey("tasks.tid"), index=True)
+    start_ts: Mapped[float] = mapped_column(index=True)  # epoch seconds
+    end_ts: Mapped[float] = mapped_column()
+    folded_file: Mapped[str] = mapped_column(String(255))  # basename under <tid>/chunks/
+    samples: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class AgentEvent(Base):
