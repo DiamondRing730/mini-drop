@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { EbpfDist, TaskDetail as Task, TopN } from "../types";
+import type { EbpfDist, TaskDetail as Task, TimelineEntry, TopN } from "../types";
 import { StatusBadge } from "../App";
 import { TopNChart } from "../components/TopNChart";
 import { EbpfChart } from "../components/EbpfChart";
+import { TimelineChart } from "../components/TimelineChart";
 
 const TERMINAL = new Set(["DONE", "FAILED"]);
 
@@ -11,6 +12,8 @@ export function TaskDetail({ tid }: { tid: string }) {
   const [task, setTask] = useState<Task | null>(null);
   const [top, setTop] = useState<TopN | null>(null);
   const [ebpf, setEbpf] = useState<EbpfDist | null>(null);
+  const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
+  const [windowSrc, setWindowSrc] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -31,6 +34,14 @@ export function TaskDetail({ tid }: { tid: string }) {
         if (t.analysis_status === "DONE" && t.result_files.ebpf && !ebpf) {
           try {
             setEbpf(await api.getEbpf(tid, t.result_files.ebpf));
+          } catch (e) {
+            console.error(e);
+          }
+        }
+        // Continuous sessions: refresh the slice timeline each tick.
+        if (t.mode === "continuous") {
+          try {
+            setTimeline(await api.getTimeline(tid));
           } catch (e) {
             console.error(e);
           }
@@ -57,6 +68,7 @@ export function TaskDetail({ tid }: { tid: string }) {
 
   const flameName = task.result_files.flamegraph;
   const isEbpf = task.profiler_type === "ebpf";
+  const isContinuous = task.mode === "continuous";
   return (
     <div>
       <p><a className="back" href="#/">← 返回任务列表</a></p>
@@ -91,7 +103,24 @@ export function TaskDetail({ tid }: { tid: string }) {
           </ul>
         </section>
 
-        {isEbpf ? (
+        {isContinuous ? (
+          <section className="card span2">
+            <h2>持续 Profiling 时间轴（{timeline.length} 个切片）</h2>
+            {timeline.length ? (
+              <>
+                <TimelineChart chunks={timeline} onWindow={(f, t) => setWindowSrc(api.windowUrl(task.tid, f, t))} />
+                <h3 style={{ marginTop: 12 }}>窗口火焰图</h3>
+                {windowSrc ? (
+                  <iframe className="flame" src={windowSrc} title="window-flame" />
+                ) : (
+                  <p className="muted">在时间轴上拖动选择窗口，点"查看此窗口火焰图"即可回看任意时段。</p>
+                )}
+              </>
+            ) : (
+              <p className="muted">采集中，等待第一个时间切片…</p>
+            )}
+          </section>
+        ) : isEbpf ? (
           <section className="card span2">
             <h2>eBPF 内核态延迟分布{ebpf ? `（${ebpf.total_events} 次 read/write）` : ""}</h2>
             {ebpf ? (

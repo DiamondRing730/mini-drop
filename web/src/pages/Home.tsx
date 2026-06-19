@@ -15,7 +15,12 @@ export function Home() {
       setTasks(t);
       // Merge each agent's audit trail into one recent-events feed.
       const perAgent = await Promise.all(
-        a.map((ag) => api.getAgentEvents(ag.id).then((evs) => evs.map((e) => ({ ...e, agent_id: ag.id }))).catch(() => []))
+        a.map((ag) =>
+          api
+            .getAgentEvents(ag.id)
+            .then((evs) => evs.map((e) => ({ ...e, agent_id: ag.id })))
+            .catch(() => [])
+        )
       );
       const merged = perAgent.flat().sort((x, y) => (x.created_at < y.created_at ? 1 : -1)).slice(0, 12);
       setEvents(merged);
@@ -52,28 +57,6 @@ export function Home() {
   );
 }
 
-function AuditTable({ events }: { events: (AgentEvent & { agent_id: string })[] }) {
-  if (events.length === 0) return <p className="muted">暂无审计事件。</p>;
-  const tone: Record<string, string> = { OFFLINE: "b-FAILED", RECOVER: "b-DONE", REGISTER: "b-RUNNING" };
-  return (
-    <table>
-      <thead>
-        <tr><th>时间</th><th>Agent</th><th>事件</th><th>详情</th></tr>
-      </thead>
-      <tbody>
-        {events.map((e, i) => (
-          <tr key={i}>
-            <td className="muted">{new Date(e.created_at).toLocaleTimeString()}</td>
-            <td>{e.agent_id}</td>
-            <td><span className={`badge ${tone[e.event_type] || "b-NONE"}`}>{e.event_type}</span></td>
-            <td className="muted">{e.detail}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
 function AgentTable({ agents }: { agents: Agent[] }) {
   if (agents.length === 0) return <p className="muted">暂无 Agent，等待心跳…</p>;
   return (
@@ -102,8 +85,12 @@ function CreateForm({ agents, onCreated }: { agents: Agent[]; onCreated: () => v
   const [freq, setFreq] = useState(99);
   const [profiler, setProfiler] = useState("pyspy");
   const [agentId, setAgentId] = useState("");
+  const [continuous, setContinuous] = useState(false);
+  const [slice, setSlice] = useState(10);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  // Continuous mode is py-spy-based in this MVP.
+  const effectiveProfiler = continuous ? "pyspy" : profiler;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -111,10 +98,12 @@ function CreateForm({ agents, onCreated }: { agents: Agent[]; onCreated: () => v
     setBusy(true);
     try {
       const body: CreateTaskBody = {
-        target_pid: profiler === "ebpf" ? Number(pid) || 0 : Number(pid),
+        target_pid: effectiveProfiler === "ebpf" ? Number(pid) || 0 : Number(pid),
         duration_sec: duration,
         frequency_hz: freq,
-        profiler_type: profiler,
+        profiler_type: effectiveProfiler,
+        mode: continuous ? "continuous" : "oneshot",
+        slice_sec: slice,
         agent_id: agentId || null,
       };
       await api.createTask(body);
@@ -129,24 +118,38 @@ function CreateForm({ agents, onCreated }: { agents: Agent[]; onCreated: () => v
 
   return (
     <form onSubmit={submit}>
-      <label>目标 PID{profiler === "ebpf" ? "（留空/0 = 全系统）" : ""}</label>
+      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <input type="checkbox" checked={continuous} style={{ width: "auto" }}
+               onChange={(e) => setContinuous(e.target.checked)} />
+        持续 Profiling（时间轴回看，py-spy）
+      </label>
+      <label>目标 PID{effectiveProfiler === "ebpf" ? "（留空/0 = 全系统）" : ""}</label>
       <input value={pid} onChange={(e) => setPid(e.target.value)}
-             placeholder={profiler === "ebpf" ? "0 = 全系统" : "例如 1234"}
-             required={profiler !== "ebpf"} />
+             placeholder={effectiveProfiler === "ebpf" ? "0 = 全系统" : "例如 1234"}
+             required={effectiveProfiler !== "ebpf"} />
       <div className="row">
         <div>
-          <label>时长 (秒)</label>
-          <input type="number" value={duration} min={1} max={600}
+          <label>{continuous ? "会话时长 (秒)" : "时长 (秒)"}</label>
+          <input type="number" value={duration} min={1} max={3600}
                  onChange={(e) => setDuration(Number(e.target.value))} />
         </div>
-        <div>
-          <label>采样率 (Hz)</label>
-          <input type="number" value={freq} min={1} max={999}
-                 onChange={(e) => setFreq(Number(e.target.value))} />
-        </div>
+        {continuous ? (
+          <div>
+            <label>切片长度 (秒)</label>
+            <input type="number" value={slice} min={1} max={60}
+                   onChange={(e) => setSlice(Number(e.target.value))} />
+          </div>
+        ) : (
+          <div>
+            <label>采样率 (Hz)</label>
+            <input type="number" value={freq} min={1} max={999}
+                   onChange={(e) => setFreq(Number(e.target.value))} />
+          </div>
+        )}
       </div>
-      <label>采集器</label>
-      <select value={profiler} onChange={(e) => setProfiler(e.target.value)}>
+      <label>采集器{continuous ? "（持续模式固定 py-spy）" : ""}</label>
+      <select value={effectiveProfiler} disabled={continuous}
+              onChange={(e) => setProfiler(e.target.value)}>
         <option value="pyspy">py-spy（Python 语言级）</option>
         <option value="perf">perf（原生 CPU）</option>
         <option value="ebpf">eBPF（内核 syscall 延迟）</option>
@@ -176,7 +179,7 @@ function TaskTable({ tasks, onChange }: { tasks: TaskSummary[]; onChange: () => 
     <table>
       <thead>
         <tr>
-          <th>任务</th><th>PID</th><th>采集器</th><th>采集状态</th>
+          <th>任务</th><th>PID</th><th>采集器</th><th>模式</th><th>采集状态</th>
           <th>分析状态</th><th>创建时间</th><th></th>
         </tr>
       </thead>
@@ -186,10 +189,33 @@ function TaskTable({ tasks, onChange }: { tasks: TaskSummary[]; onChange: () => 
             <td><a href={`#/task/${t.tid}`}>{t.name || t.tid}</a></td>
             <td>{t.target_pid}</td>
             <td>{t.profiler_type}</td>
+            <td>{t.mode === "continuous" ? "持续" : "单次"}</td>
             <td><StatusBadge status={t.status} /></td>
             <td><span className={`badge b-${t.analysis_status}`}>{t.analysis_status}</span></td>
             <td className="muted">{new Date(t.created_at).toLocaleString()}</td>
             <td><button className="ghost" onClick={() => del(t.tid)}>删除</button></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function AuditTable({ events }: { events: (AgentEvent & { agent_id: string })[] }) {
+  if (events.length === 0) return <p className="muted">暂无审计事件。</p>;
+  const tone: Record<string, string> = { OFFLINE: "b-FAILED", RECOVER: "b-DONE", REGISTER: "b-RUNNING" };
+  return (
+    <table>
+      <thead>
+        <tr><th>时间</th><th>Agent</th><th>事件</th><th>详情</th></tr>
+      </thead>
+      <tbody>
+        {events.map((e, i) => (
+          <tr key={i}>
+            <td className="muted">{new Date(e.created_at).toLocaleTimeString()}</td>
+            <td>{e.agent_id}</td>
+            <td><span className={`badge ${tone[e.event_type] || "b-NONE"}`}>{e.event_type}</span></td>
+            <td className="muted">{e.detail}</td>
           </tr>
         ))}
       </tbody>

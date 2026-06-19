@@ -21,11 +21,18 @@ export interface AgentEvent {
   created_at: string;
 }
 
+export interface TimelineEntry {
+  start_ts: number;
+  end_ts: number;
+  samples: number;
+}
+
 export interface TaskSummary {
   tid: string;
   name: string;
   target_pid: number;
   profiler_type: string;
+  mode: string;
   status: string;
   status_reason: string;
   analysis_status: string;

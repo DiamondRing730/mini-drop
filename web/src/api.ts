@@ -1,4 +1,4 @@
-import type { Agent, AgentEvent, EbpfDist, TaskDetail, TaskSummary, TopN } from "./types";
+import type { Agent, AgentEvent, EbpfDist, TaskDetail, TaskSummary, TimelineEntry, TopN } from "./types";
 
 const BASE = "/api/v1";
 
@@ -19,6 +19,8 @@ export interface CreateTaskBody {
   duration_sec: number;
   frequency_hz: number;
   profiler_type: string;
+  mode?: string;
+  slice_sec?: number;
   agent_id?: string | null;
 }
 
@@ -33,4 +35,7 @@ export const api = {
   artifactUrl: (tid: string, name: string) => `${BASE}/tasks/${tid}/artifacts/${name}`,
   getTopN: (tid: string, name: string) => j<TopN>(`${BASE}/tasks/${tid}/artifacts/${name}`),
   getEbpf: (tid: string, name: string) => j<EbpfDist>(`${BASE}/tasks/${tid}/artifacts/${name}`),
+  getTimeline: (tid: string) => j<TimelineEntry[]>(`${BASE}/tasks/${tid}/timeline`),
+  windowUrl: (tid: string, from: number, to: number) =>
+    `${BASE}/tasks/${tid}/window?from=${from}&to=${to}`,
 };
