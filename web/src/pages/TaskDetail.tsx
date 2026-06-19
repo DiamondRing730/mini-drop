@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { TaskDetail as Task, TopN } from "../types";
+import type { EbpfDist, TaskDetail as Task, TopN } from "../types";
 import { StatusBadge } from "../App";
 import { TopNChart } from "../components/TopNChart";
+import { EbpfChart } from "../components/EbpfChart";
 
 const TERMINAL = new Set(["DONE", "FAILED"]);
 
 export function TaskDetail({ tid }: { tid: string }) {
   const [task, setTask] = useState<Task | null>(null);
   const [top, setTop] = useState<TopN | null>(null);
+  const [ebpf, setEbpf] = useState<EbpfDist | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -18,10 +20,17 @@ export function TaskDetail({ tid }: { tid: string }) {
         const t = await api.getTask(tid);
         if (stop) return;
         setTask(t);
-        // Once analysis is done, fetch the TopN json once.
+        // Once analysis is done, fetch the result artifact (TopN or eBPF) once.
         if (t.analysis_status === "DONE" && t.result_files.topn && !top) {
           try {
             setTop(await api.getTopN(tid, t.result_files.topn));
+          } catch (e) {
+            console.error(e);
+          }
+        }
+        if (t.analysis_status === "DONE" && t.result_files.ebpf && !ebpf) {
+          try {
+            setEbpf(await api.getEbpf(tid, t.result_files.ebpf));
           } catch (e) {
             console.error(e);
           }
@@ -47,6 +56,7 @@ export function TaskDetail({ tid }: { tid: string }) {
   if (!task) return <p className="muted">加载中…</p>;
 
   const flameName = task.result_files.flamegraph;
+  const isEbpf = task.profiler_type === "ebpf";
   return (
     <div>
       <p><a className="back" href="#/">← 返回任务列表</a></p>
@@ -81,20 +91,33 @@ export function TaskDetail({ tid }: { tid: string }) {
           </ul>
         </section>
 
-        <section className="card span2">
-          <h2>火焰图</h2>
-          {flameName ? (
-            <iframe className="flame" src={api.artifactUrl(task.tid, flameName)} title="flamegraph" />
-          ) : (
-            <p className="muted">分析完成后这里会显示火焰图…</p>
-          )}
-        </section>
-
-        {top && (
+        {isEbpf ? (
           <section className="card span2">
-            <h2>热点 Top{top.top.length}（共 {top.total_samples} 样本 / {top.unique_stacks} 条栈）</h2>
-            <TopNChart data={top} />
+            <h2>eBPF 内核态延迟分布{ebpf ? `（${ebpf.total_events} 次 read/write）` : ""}</h2>
+            {ebpf ? (
+              <EbpfChart data={ebpf} />
+            ) : (
+              <p className="muted">分析完成后这里会显示 bpftrace 采集的系统调用延迟分布…</p>
+            )}
           </section>
+        ) : (
+          <>
+            <section className="card span2">
+              <h2>火焰图</h2>
+              {flameName ? (
+                <iframe className="flame" src={api.artifactUrl(task.tid, flameName)} title="flamegraph" />
+              ) : (
+                <p className="muted">分析完成后这里会显示火焰图…</p>
+              )}
+            </section>
+
+            {top && (
+              <section className="card span2">
+                <h2>热点 Top{top.top.length}（共 {top.total_samples} 样本 / {top.unique_stacks} 条栈）</h2>
+                <TopNChart data={top} />
+              </section>
+            )}
+          </>
         )}
       </div>
     </div>

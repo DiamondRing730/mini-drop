@@ -1,4 +1,4 @@
-import type { Agent, AgentEvent, TaskDetail, TaskSummary, TopN } from "./types";
+import type { Agent, AgentEvent, EbpfDist, TaskDetail, TaskSummary, TopN } from "./types";
 
 const BASE = "/api/v1";
 
@@ -32,4 +32,5 @@ export const api = {
   deleteTask: (tid: string) => j<unknown>(`${BASE}/tasks/${tid}`, { method: "DELETE" }),
   artifactUrl: (tid: string, name: string) => `${BASE}/tasks/${tid}/artifacts/${name}`,
   getTopN: (tid: string, name: string) => j<TopN>(`${BASE}/tasks/${tid}/artifacts/${name}`),
+  getEbpf: (tid: string, name: string) => j<EbpfDist>(`${BASE}/tasks/${tid}/artifacts/${name}`),
 };

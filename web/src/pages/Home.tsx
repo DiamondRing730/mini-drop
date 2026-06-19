@@ -111,7 +111,7 @@ function CreateForm({ agents, onCreated }: { agents: Agent[]; onCreated: () => v
     setBusy(true);
     try {
       const body: CreateTaskBody = {
-        target_pid: Number(pid),
+        target_pid: profiler === "ebpf" ? Number(pid) || 0 : Number(pid),
         duration_sec: duration,
         frequency_hz: freq,
         profiler_type: profiler,
@@ -129,8 +129,10 @@ function CreateForm({ agents, onCreated }: { agents: Agent[]; onCreated: () => v
 
   return (
     <form onSubmit={submit}>
-      <label>目标 PID</label>
-      <input value={pid} onChange={(e) => setPid(e.target.value)} placeholder="例如 1234" required />
+      <label>目标 PID{profiler === "ebpf" ? "（留空/0 = 全系统）" : ""}</label>
+      <input value={pid} onChange={(e) => setPid(e.target.value)}
+             placeholder={profiler === "ebpf" ? "0 = 全系统" : "例如 1234"}
+             required={profiler !== "ebpf"} />
       <div className="row">
         <div>
           <label>时长 (秒)</label>
@@ -147,6 +149,7 @@ function CreateForm({ agents, onCreated }: { agents: Agent[]; onCreated: () => v
       <select value={profiler} onChange={(e) => setProfiler(e.target.value)}>
         <option value="pyspy">py-spy（Python 语言级）</option>
         <option value="perf">perf（原生 CPU）</option>
+        <option value="ebpf">eBPF（内核 syscall 延迟）</option>
       </select>
       <label>目标 Agent（留空=任意在线）</label>
       <select value={agentId} onChange={(e) => setAgentId(e.target.value)}>

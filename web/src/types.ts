@@ -49,3 +49,11 @@ export interface TopN {
   unique_stacks: number;
   top: { func: string; self: number; self_pct: number }[];
 }
+
+export interface EbpfDist {
+  kind: string;
+  unit: string;
+  total_events: number;
+  latency_us: { bucket: string; count: number }[];
+  by_comm: { comm: string; count: number }[];
+}
