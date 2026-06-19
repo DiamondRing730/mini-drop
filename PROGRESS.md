@@ -30,7 +30,11 @@
 - ✅ **eBPF 采集器（扩展，真跑）**：bpftrace 抓 read/write syscall 延迟分布；一次采集 **130,333** 个事件，
   现场 `dd` 制造 IO 后 `dd` 进程出现在 by_comm 第 2（7470 次），延迟直方图（log2 桶）正常；已修跨 CPU `nsecs` 下溢。
   Web 用独立的 ECharts 分布图展示（区别于火焰图）
-- ✅ **单测**：`pytest tests/unit`（WSL Ubuntu 原生 venv）→ **17 passed；覆盖率 79%**（app+analyzer，含 eBPF 解析）
+- ✅ **Continuous Profiling（扩展，真跑）**：常驻 py-spy 按 slice 切片采集，40s 会话出 5 个切片；
+  `GET /tasks/{tid}/timeline` 时间轴 + `GET /tasks/{tid}/window?from&to` **按任意窗口在线合并渲染火焰图**
+  （实测子窗口=2 切片=1582 样本，全窗口=5 切片），Web 有时间轴拖选 + 窗口火焰图
+- ✅ **3 条 E2E**（WSL 原生 venv）→ **3 passed**（正常 / 坏PID / Agent 离线恢复）
+- ✅ **单测**：`pytest tests/unit`（WSL Ubuntu 原生 venv）→ **21 passed；覆盖率 79%**（含 eBPF/flame/continuous）
 - ✅ **Agent 离线恢复 + 审计日志**：停 agent → 30s 后 `online=false` 且写 `OFFLINE` 审计；重启 → 3s 内 `online=true` 且写 `RECOVER`。审计轨迹 `REGISTER→OFFLINE→RECOVER` 经新接口 `GET /api/v1/agents/{id}/events` 可见
 - ℹ️ 3 条 E2E 用例（正常/坏PID/离线恢复）均已写好（`tests/e2e/`）；正常+坏PID+离线恢复均已手动实跑通过。pytest 形式待在带 pip 的 Python/容器里跑一遍
 
@@ -61,10 +65,9 @@ chore:          scaffold repo with README, gitignore and LF normalization
 
 ## 下一步（按优先级）
 
-1. **跑 3 条 E2E**（WSL 原生 venv：`/tmp/mdvenv/bin/python -m pytest tests/e2e`）凑齐全绿（正常/坏PID/离线恢复均已手动通过）。
-2. **Continuous Profiling**：常驻低频采样 + 切片 + 时间轴回看 5min 窗口。
-3. **智能归因（加分）**：结构化喂 LLM、LLM 只能调自定义工具、产可验证结论 + 评测报告。
-4. **设计文档（≤10页）+ 演示视频（≤15min）**。
+1. **智能归因（加分，强烈推荐）**：结构化喂 LLM、LLM 只能调自定义工具、产可验证结论 + 评测报告。
+2. **设计文档（≤10页）+ 演示视频（≤15min）**。
+3. （可选）自然语言采集；perf 持续模式；前端打磨。
 
-> ✅ eBPF 采集器已完成（见上）。环境提示：WSL Ubuntu 可原生跑 `make` / `pytest`；
-> 镜像构建在 Windows 侧或配好 registry mirror 的网络下进行（Docker Hub 直连被污染）。
+> ✅ 基础 MVP + 三项必做扩展（py-spy / eBPF / Continuous Profiling）+ 3 条 E2E 均已完成并验证。
+> 环境提示：WSL Ubuntu 可原生跑 `make` / `pytest`；镜像构建在 Windows 侧或配好 registry mirror 的网络下进行。
