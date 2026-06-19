@@ -1,0 +1,8 @@
+# Normalize all text files to LF so the repo builds identically on Linux/WSL,
+# regardless of the developer's OS (this project is developed on Windows/WSL2).
+* text=auto eol=lf
+
+# Binary artifacts that must never be touched
+*.svg -text
+*.png binary
+*.data binary
