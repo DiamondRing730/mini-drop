@@ -28,3 +28,7 @@ perf.data
 .vscode/
 .DS_Store
 *.swp
+
+# transient build/diagnostic logs
+build.log
+*.log
