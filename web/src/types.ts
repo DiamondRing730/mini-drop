@@ -15,6 +15,12 @@ export interface Transition {
   created_at: string;
 }
 
+export interface AgentEvent {
+  event_type: string;
+  detail: string;
+  created_at: string;
+}
+
 export interface TaskSummary {
   tid: string;
   name: string;

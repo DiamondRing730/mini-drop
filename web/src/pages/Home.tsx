@@ -1,17 +1,24 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, type CreateTaskBody } from "../api";
-import type { Agent, TaskSummary } from "../types";
+import type { Agent, AgentEvent, TaskSummary } from "../types";
 import { StatusBadge } from "../App";
 
 export function Home() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
+  const [events, setEvents] = useState<(AgentEvent & { agent_id: string })[]>([]);
 
   const refresh = async () => {
     try {
       const [a, t] = await Promise.all([api.listAgents(), api.listTasks()]);
       setAgents(a);
       setTasks(t);
+      // Merge each agent's audit trail into one recent-events feed.
+      const perAgent = await Promise.all(
+        a.map((ag) => api.getAgentEvents(ag.id).then((evs) => evs.map((e) => ({ ...e, agent_id: ag.id }))).catch(() => []))
+      );
+      const merged = perAgent.flat().sort((x, y) => (x.created_at < y.created_at ? 1 : -1)).slice(0, 12);
+      setEvents(merged);
     } catch (e) {
       console.error(e);
     }
@@ -37,7 +44,33 @@ export function Home() {
         <h2>任务 ({tasks.length})</h2>
         <TaskTable tasks={tasks} onChange={refresh} />
       </section>
+      <section className="card span2">
+        <h2>Agent 审计日志</h2>
+        <AuditTable events={events} />
+      </section>
     </div>
+  );
+}
+
+function AuditTable({ events }: { events: (AgentEvent & { agent_id: string })[] }) {
+  if (events.length === 0) return <p className="muted">暂无审计事件。</p>;
+  const tone: Record<string, string> = { OFFLINE: "b-FAILED", RECOVER: "b-DONE", REGISTER: "b-RUNNING" };
+  return (
+    <table>
+      <thead>
+        <tr><th>时间</th><th>Agent</th><th>事件</th><th>详情</th></tr>
+      </thead>
+      <tbody>
+        {events.map((e, i) => (
+          <tr key={i}>
+            <td className="muted">{new Date(e.created_at).toLocaleTimeString()}</td>
+            <td>{e.agent_id}</td>
+            <td><span className={`badge ${tone[e.event_type] || "b-NONE"}`}>{e.event_type}</span></td>
+            <td className="muted">{e.detail}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

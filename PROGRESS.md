@@ -26,9 +26,10 @@
   `None→PENDING→RUNNING→UPLOADING→DONE`（每步带 reason）+ analysis `DONE`
 - ✅ **火焰图 + 热点**：791 样本，TopN 准确命中负载热点（`fib` 58.9%+17.7%、`warm_path`、`crunch_numbers`，含 file:line）
 - ✅ **异常路径（坏 PID）**：target_pid=999999 → 任务 `FAILED`，reason=`target pid 999999 does not exist`
-- ✅ **Web**：`http://localhost:8080` 返回 200（nginx 反代 /api 到 server）
+- ✅ **Web**：`http://localhost:8080` 返回 200（nginx 反代 /api 到 server），新增 Agent 审计日志面板
 - ✅ **单测**：`pytest tests/unit` → 16 passed；覆盖率 79%（app+analyzer）
-- ⏳ **E2E（Agent 离线恢复）**：用例已写好；本机用 pytest 跑需要带 pip 的 Python（Git Bash 里是 MSYS2 python 无 pip），待用容器或正式 venv 跑。离线检测逻辑本身已实现且单测部分覆盖。
+- ✅ **Agent 离线恢复 + 审计日志**：停 agent → 30s 后 `online=false` 且写 `OFFLINE` 审计；重启 → 3s 内 `online=true` 且写 `RECOVER`。审计轨迹 `REGISTER→OFFLINE→RECOVER` 经新接口 `GET /api/v1/agents/{id}/events` 可见
+- ℹ️ 3 条 E2E 用例（正常/坏PID/离线恢复）均已写好（`tests/e2e/`）；正常+坏PID+离线恢复均已手动实跑通过。pytest 形式待在带 pip 的 Python/容器里跑一遍
 
 ## 重要环境说明（踩坑记录）
 

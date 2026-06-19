@@ -60,6 +60,13 @@ class AgentOut(BaseModel):
     self_stats: dict
 
 
+class AgentEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    event_type: str
+    detail: str
+    created_at: datetime
+
+
 # ---------- agent: heartbeat / status / result ----------
 
 

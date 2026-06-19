@@ -1,4 +1,4 @@
-import type { Agent, TaskDetail, TaskSummary, TopN } from "./types";
+import type { Agent, AgentEvent, TaskDetail, TaskSummary, TopN } from "./types";
 
 const BASE = "/api/v1";
 
@@ -24,6 +24,7 @@ export interface CreateTaskBody {
 
 export const api = {
   listAgents: () => j<Agent[]>(`${BASE}/agents`),
+  getAgentEvents: (id: string) => j<AgentEvent[]>(`${BASE}/agents/${id}/events`),
   listTasks: () => j<TaskSummary[]>(`${BASE}/tasks`),
   getTask: (tid: string) => j<TaskDetail>(`${BASE}/tasks/${tid}`),
   createTask: (body: CreateTaskBody) =>

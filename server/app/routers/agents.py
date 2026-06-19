@@ -14,6 +14,7 @@ from ..enums import AgentEventType, AnalysisStatus, TaskStatus
 from ..logging_config import log_event
 from ..models import Agent, AgentEvent, Task
 from ..schemas import (
+    AgentEventOut,
     AgentOut,
     HeartbeatRequest,
     HeartbeatResponse,
@@ -31,6 +32,17 @@ logger = logging.getLogger("minidrop.agents")
 @router.get("/agents", response_model=list[AgentOut])
 def list_agents(session: Session = Depends(get_session)):
     return session.execute(select(Agent).order_by(Agent.created_at)).scalars().all()
+
+
+@router.get("/agents/{agent_id}/events", response_model=list[AgentEventOut])
+def agent_events(agent_id: str, limit: int = 50, session: Session = Depends(get_session)):
+    """The agent's lifecycle audit trail (register / offline / recover), newest first."""
+    return session.execute(
+        select(AgentEvent)
+        .where(AgentEvent.agent_id == agent_id)
+        .order_by(AgentEvent.created_at.desc())
+        .limit(limit)
+    ).scalars().all()
 
 
 def _claim_task(session: Session, agent_id: str) -> Task | None:

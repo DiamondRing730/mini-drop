@@ -85,18 +85,29 @@ def test_bad_pid_fails_with_reason():
     assert detail["status_reason"] or detail["error_message"]
 
 
-def test_agent_offline_then_recover():
-    def any_online():
-        return any(a["online"] for a in requests.get(f"{BASE}/api/v1/agents", timeout=10).json())
+def _agents():
+    return requests.get(f"{BASE}/api/v1/agents", timeout=10).json()
 
-    assert _wait(any_online, timeout=30), "no agent online at start"
+
+def _event_types(agent_id: str) -> list[str]:
+    evs = requests.get(f"{BASE}/api/v1/agents/{agent_id}/events", timeout=10).json()
+    return [e["event_type"] for e in evs]
+
+
+def test_agent_offline_then_recover():
+    agents = _wait(lambda: _agents() or None, timeout=30)
+    assert agents, "no agent at start"
+    agent_id = agents[0]["id"]
+    assert _wait(lambda: any(a["online"] for a in _agents()), timeout=30), "no agent online at start"
 
     subprocess.run(["docker", "compose", "stop", "agent"], cwd=ROOT, check=True)
     try:
         # offline_threshold (30s) + monitor interval -> give it 50s
-        went_offline = _wait(lambda: not any_online(), timeout=50)
+        went_offline = _wait(lambda: not any(a["online"] for a in _agents()), timeout=50)
         assert went_offline, "agent was not marked offline after being stopped"
+        assert "OFFLINE" in _event_types(agent_id), "no OFFLINE audit event written"
     finally:
         subprocess.run(["docker", "compose", "start", "agent"], cwd=ROOT, check=True)
 
-    assert _wait(any_online, timeout=40), "agent did not recover after restart"
+    assert _wait(lambda: any(a["online"] for a in _agents()), timeout=40), "agent did not recover"
+    assert _wait(lambda: "RECOVER" in _event_types(agent_id), timeout=20), "no RECOVER audit event written"
