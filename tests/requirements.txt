@@ -1,0 +1,8 @@
+# Install with:  pip install -r tests/requirements.txt
+# (pulls the server + analyzer deps so their modules are importable in unit tests)
+-r ../server/requirements.txt
+-r ../analyzer/requirements.txt
+pytest==8.3.4
+pytest-cov==6.0.0
+httpx==0.28.1
+requests==2.32.3
