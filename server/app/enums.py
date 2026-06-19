@@ -21,6 +21,7 @@ class AnalysisStatus(str, enum.Enum):
 class ProfilerType(str, enum.Enum):
     PERF = "perf"      # native CPU sampling via Linux perf
     PYSPY = "pyspy"    # Python language-level sampling via py-spy
+    EBPF = "ebpf"      # kernel-level syscall latency via bpftrace (tracepoint probe)
 
 
 # from-state -> set of allowed to-states. Terminal states have no outgoing edges.

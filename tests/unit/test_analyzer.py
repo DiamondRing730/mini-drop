@@ -2,6 +2,7 @@
 import os
 import tempfile
 
+from analyzer.ebpf import parse_bpftrace
 from analyzer.flamegraph import render_svg
 from analyzer.stacks import build_tree, compute_topn, parse_folded, parse_perf_script
 
@@ -59,3 +60,21 @@ def test_empty_input_yields_empty_folded():
     path = _write("\n  \n", ".folded")
     assert parse_folded(path) == {}
     os.remove(path)
+
+
+def test_parse_bpftrace_histogram():
+    text = (
+        "Attaching 5 probes...\n\n"
+        "@by_comm[python]: 12\n"
+        "@by_comm[dd]: 5000\n\n"
+        "@usecs:\n"
+        "[0]                  3 |@@@        |\n"
+        "[2, 4)               7 |@@@@@@@    |\n"
+        "[4, 8)              42 |@@@@@@@@@@@|\n"
+    )
+    path = _write(text, ".txt")
+    dist = parse_bpftrace(path)
+    os.remove(path)
+    assert dist["total_events"] == 52
+    assert dist["by_comm"][0] == {"comm": "dd", "count": 5000}  # sorted desc
+    assert {"bucket": "[4, 8)", "count": 42} in dist["latency_us"]

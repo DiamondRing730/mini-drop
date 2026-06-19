@@ -11,6 +11,7 @@ import time
 
 from .client import AnalyzerClient
 from .config import Config
+from .ebpf import parse_bpftrace
 from .flamegraph import render_svg
 from .logging_config import configure_logging
 from .stacks import build_tree, compute_topn, parse_folded, parse_perf_script
@@ -32,6 +33,14 @@ def process_job(job: dict, cfg: Config) -> dict:
     profiler = job.get("profiler_type", "")
     files = job.get("result_files") or {}
     out_dir = os.path.join(cfg.artifacts_dir, tid)
+
+    # eBPF tasks produce a latency distribution, not a flamegraph.
+    if "ebpf_hist" in files:
+        dist = parse_bpftrace(os.path.join(out_dir, files["ebpf_hist"]))
+        if not dist["latency_us"] and not dist["by_comm"]:
+            raise AnalysisError("no events captured by bpftrace (idle target?)")
+        _write(os.path.join(out_dir, "ebpf.json"), json.dumps(dist, ensure_ascii=False, indent=2))
+        return {"ebpf": "ebpf.json"}
 
     if "perf_script" in files:
         folded = parse_perf_script(os.path.join(out_dir, files["perf_script"]))

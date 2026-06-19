@@ -10,7 +10,8 @@ from .enums import ProfilerType
 
 class CreateTaskRequest(BaseModel):
     name: str = Field(default="", max_length=255)
-    target_pid: int = Field(gt=0)
+    # 0 is allowed and means "system-wide" for the eBPF collector; perf/py-spy reject it.
+    target_pid: int = Field(ge=0)
     duration_sec: int = Field(default=10, ge=1, le=600)
     frequency_hz: int = Field(default=99, ge=1, le=999)
     profiler_type: ProfilerType = ProfilerType.PERF

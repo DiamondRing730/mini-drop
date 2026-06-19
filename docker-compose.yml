@@ -49,6 +49,8 @@ services:
       MINIDROP_PERF_EVENT: cpu-clock
     volumes:
       - md_data:/data
+      # debugfs/tracefs so bpftrace can attach kernel tracepoints
+      - /sys/kernel/debug:/sys/kernel/debug:rw
     depends_on:
       server:
         condition: service_healthy

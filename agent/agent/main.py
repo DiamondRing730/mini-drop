@@ -13,6 +13,7 @@ import threading
 import time
 
 from .client import ServerClient
+from .collectors.ebpf import EbpfCollector
 from .collectors.perf import PerfCollector
 from .collectors.pyspy import PySpyCollector
 from .config import Config
@@ -37,7 +38,11 @@ def main() -> None:
     cfg = Config()
     client = ServerClient(cfg.server_url)
     sampler = PidStatsSampler()
-    collectors = {"perf": PerfCollector(cfg.perf_event), "pyspy": PySpyCollector()}
+    collectors = {
+        "perf": PerfCollector(cfg.perf_event),
+        "pyspy": PySpyCollector(),
+        "ebpf": EbpfCollector(),
+    }
     task_queue: "queue.Queue[dict]" = queue.Queue()
 
     threading.Thread(
