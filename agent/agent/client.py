@@ -24,6 +24,15 @@ class ServerClient:
         r.raise_for_status()
         return r.json()
 
+    def report_chunk(self, tid: str, start_ts: float, end_ts: float, folded_file: str, samples: int) -> dict:
+        r = self.session.post(
+            f"{self.base_url}/api/v1/agent/tasks/{tid}/chunk",
+            json={"start_ts": start_ts, "end_ts": end_ts, "folded_file": folded_file, "samples": samples},
+            timeout=self.timeout,
+        )
+        r.raise_for_status()
+        return r.json()
+
     def report_result(self, tid: str, success: bool, error: str = "", files: dict | None = None) -> dict:
         r = self.session.post(
             f"{self.base_url}/api/v1/agent/tasks/{tid}/result",
