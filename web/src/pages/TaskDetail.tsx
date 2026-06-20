@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { EbpfDist, TaskDetail as Task, TimelineEntry, TopN } from "../types";
+import type { Attribution, EbpfDist, TaskDetail as Task, TimelineEntry, TopN } from "../types";
 import { StatusBadge } from "../App";
 import { TopNChart } from "../components/TopNChart";
 import { EbpfChart } from "../components/EbpfChart";
 import { TimelineChart } from "../components/TimelineChart";
+import { AttributionPanel } from "../components/AttributionPanel";
 
 const TERMINAL = new Set(["DONE", "FAILED"]);
 
@@ -14,6 +15,7 @@ export function TaskDetail({ tid }: { tid: string }) {
   const [ebpf, setEbpf] = useState<EbpfDist | null>(null);
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [windowSrc, setWindowSrc] = useState("");
+  const [attribution, setAttribution] = useState<Attribution | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -34,6 +36,14 @@ export function TaskDetail({ tid }: { tid: string }) {
         if (t.analysis_status === "DONE" && t.result_files.ebpf && !ebpf) {
           try {
             setEbpf(await api.getEbpf(tid, t.result_files.ebpf));
+          } catch (e) {
+            console.error(e);
+          }
+        }
+        // If a prior attribution was stored, load it once so the panel shows it.
+        if (t.result_files.attribution && !attribution) {
+          try {
+            setAttribution(await api.getAttribution(tid, t.result_files.attribution));
           } catch (e) {
             console.error(e);
           }
@@ -111,7 +121,7 @@ export function TaskDetail({ tid }: { tid: string }) {
                 <TimelineChart chunks={timeline} onWindow={(f, t) => setWindowSrc(api.windowUrl(task.tid, f, t))} />
                 <h3 style={{ marginTop: 12 }}>窗口火焰图</h3>
                 {windowSrc ? (
-                  <iframe className="flame" src={windowSrc} title="window-flame" />
+                  <img className="flame" src={windowSrc} alt="所选时间窗口的火焰图" />
                 ) : (
                   <p className="muted">在时间轴上拖动选择窗口，点"查看此窗口火焰图"即可回看任意时段。</p>
                 )}
@@ -134,7 +144,11 @@ export function TaskDetail({ tid }: { tid: string }) {
             <section className="card span2">
               <h2>火焰图</h2>
               {flameName ? (
-                <iframe className="flame" src={api.artifactUrl(task.tid, flameName)} title="flamegraph" />
+                <img
+                  className="flame"
+                  src={api.artifactUrl(task.tid, flameName)}
+                  alt={`${task.name || task.tid} 火焰图`}
+                />
               ) : (
                 <p className="muted">分析完成后这里会显示火焰图…</p>
               )}
@@ -144,6 +158,13 @@ export function TaskDetail({ tid }: { tid: string }) {
               <section className="card span2">
                 <h2>热点 Top{top.top.length}（共 {top.total_samples} 样本 / {top.unique_stacks} 条栈）</h2>
                 <TopNChart data={top} />
+              </section>
+            )}
+
+            {task.analysis_status === "DONE" && (
+              <section className="card span2">
+                <h2>🤖 智能归因（AI）</h2>
+                <AttributionPanel tid={task.tid} initial={attribution} />
               </section>
             )}
           </>

@@ -64,3 +64,35 @@ export interface EbpfDist {
   latency_us: { bucket: string; count: number }[];
   by_comm: { comm: string; count: number }[];
 }
+
+export interface AttributionFinding {
+  function: string;
+  self_pct: number;
+  evidence: string;
+  recommendation: string;
+}
+
+export interface AttributionCheck {
+  function: string;
+  claimed_self_pct: number | null;
+  actual_self_pct: number | null;
+  verdict: "pass" | "fail";
+  note: string;
+}
+
+export interface Attribution {
+  tid: string;
+  engine: string;            // "claude" | "heuristic"
+  model: string | null;
+  summary: string;
+  findings: AttributionFinding[];
+  tool_trace: { tool: string; input: Record<string, unknown> }[];
+  verification: {
+    total_findings: number;
+    verified: number;
+    failed: number;
+    pass_rate: number;
+    tolerance_pct: number;
+    checks: AttributionCheck[];
+  };
+}

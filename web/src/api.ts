@@ -1,4 +1,4 @@
-import type { Agent, AgentEvent, EbpfDist, TaskDetail, TaskSummary, TimelineEntry, TopN } from "./types";
+import type { Agent, AgentEvent, Attribution, EbpfDist, TaskDetail, TaskSummary, TimelineEntry, TopN } from "./types";
 
 const BASE = "/api/v1";
 
@@ -38,4 +38,8 @@ export const api = {
   getTimeline: (tid: string) => j<TimelineEntry[]>(`${BASE}/tasks/${tid}/timeline`),
   windowUrl: (tid: string, from: number, to: number) =>
     `${BASE}/tasks/${tid}/window?from=${from}&to=${to}`,
+  // AI attribution: get the stored result if present, or run it on demand.
+  getAttribution: (tid: string, name: string) => j<Attribution>(`${BASE}/tasks/${tid}/artifacts/${name}`),
+  runAttribution: (tid: string) =>
+    j<Attribution>(`${BASE}/tasks/${tid}/attribution`, { method: "POST" }),
 };
