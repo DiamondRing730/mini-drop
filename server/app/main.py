@@ -12,7 +12,7 @@ from .config import settings
 from .db import Base, engine
 from .logging_config import configure_logging, log_event
 from .monitor import offline_monitor
-from .routers import agents, analysis, tasks
+from .routers import agents, analysis, attribution, tasks
 
 configure_logging()
 logger = logging.getLogger("minidrop.server")
@@ -64,6 +64,7 @@ async def access_log(request: Request, call_next):
 app.include_router(tasks.router)
 app.include_router(agents.router)
 app.include_router(analysis.router)
+app.include_router(attribution.router)
 
 
 @app.get("/healthz")
