@@ -75,6 +75,7 @@ def test_happy_path_produces_flamegraph():
     assert flame
     r = requests.get(f"{BASE}/api/v1/tasks/{tid}/artifacts/{flame}", timeout=10)
     assert r.status_code == 200 and r.text.startswith("<svg")
+    assert "content-disposition" not in r.headers
 
 
 def test_bad_pid_fails_with_reason():

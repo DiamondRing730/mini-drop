@@ -67,6 +67,16 @@ def test_full_flow_create_to_analysis(client):
     })
     assert client.get(f"/api/v1/tasks/{tid}").json()["analysis_status"] == "DONE"
 
+    # SVG artifacts must render inside the Web iframe instead of downloading as files.
+    out_dir = os.path.join(settings.artifacts_dir, tid)
+    os.makedirs(out_dir, exist_ok=True)
+    with open(os.path.join(out_dir, "flamegraph.svg"), "w", encoding="utf-8") as f:
+        f.write('<svg xmlns="http://www.w3.org/2000/svg"></svg>')
+    flame = client.get(f"/api/v1/tasks/{tid}/artifacts/flamegraph.svg")
+    assert flame.status_code == 200
+    assert flame.headers["content-type"].startswith("image/svg+xml")
+    assert "content-disposition" not in flame.headers
+
 
 def test_failed_collection_marks_failed(client):
     tid = _create(client, agent_id="failer")

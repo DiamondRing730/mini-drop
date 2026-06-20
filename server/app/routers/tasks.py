@@ -92,6 +92,11 @@ def get_artifact(tid: str, filename: str, session: Session = Depends(get_session
     if not os.path.isfile(path):
         raise HTTPException(status_code=404, detail=f"artifact {safe} not found")
     media = "image/svg+xml" if safe.endswith(".svg") else None
+    # Flamegraphs are rendered inside the Web UI's iframe.  Any Content-Disposition
+    # header can make browsers treat the SVG as a download, so omit it entirely for SVGs.
+    # Other artifacts retain explicit attachment/download semantics.
+    if safe.endswith(".svg"):
+        return FileResponse(path, media_type=media)
     return FileResponse(path, media_type=media, filename=safe)
 
 
