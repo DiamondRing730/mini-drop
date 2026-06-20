@@ -32,3 +32,6 @@ perf.data
 # transient build/diagnostic logs
 build.log
 *.log
+
+# Local secrets (AI attribution API keys) — never commit
+.env

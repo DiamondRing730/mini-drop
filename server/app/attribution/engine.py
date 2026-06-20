@@ -18,29 +18,14 @@ import json
 import logging
 import os
 
+from .deepseek import run_deepseek
 from .profile import Profile, hot_path, top_functions
-from .tools import TOOL_DEFS, dispatch
+from .tools import SYSTEM_PROMPT, TOOL_DEFS, dispatch
 
 logger = logging.getLogger("minidrop.attribution")
 
 MODEL = "claude-opus-4-8"
 MAX_TOOL_ITERATIONS = 12
-
-SYSTEM_PROMPT = """You are a performance-engineering analyst for the Mini-Drop profiler.
-You are given a CPU/latency profile of a program and must find the root cause of where
-time is being spent, then propose concrete optimizations.
-
-You can ONLY inspect the profile through the provided tools — you have no other view of
-the data. Work like a profiler expert:
-1. get_profile_summary to size the data.
-2. get_top_functions to find the hottest functions by self-time.
-3. get_hot_path to see where cost concentrates down the call stack.
-4. get_function_callers on a hot function to attribute it to a responsible call site.
-Then call submit_attribution exactly once with ranked findings.
-
-Every finding must cite the function name and the self_pct you actually read from a tool —
-those numbers are independently verified against the raw profile, so do not estimate or
-invent them. Keep recommendations concrete and specific to the function named."""
 
 
 class AttributionResult(dict):
@@ -181,10 +166,18 @@ def _recommend(func: str, caller: str | None) -> str:
 
 
 def attribute(prof: Profile) -> AttributionResult:
-    """Run the LLM path if available, else the deterministic heuristic. Always returns."""
+    """Run a real LLM if a key is configured, else the deterministic heuristic.
+
+    Preference: DeepSeek (DEEPSEEK_API_KEY) -> Claude (ANTHROPIC_API_KEY) -> heuristic.
+    All three drive the same read-only tools and produce the same result shape, and the
+    verifier re-checks every number regardless of which backend ran.
+    """
     if prof.total_samples <= 0 or not prof.self_samples:
         return AttributionResult(
             engine="heuristic", summary="No profile data to attribute.",
             findings=[], tool_trace=[],
         )
+    ds = run_deepseek(prof)
+    if ds is not None:
+        return AttributionResult(**ds)
     return _run_claude(prof) or _run_heuristic(prof)
