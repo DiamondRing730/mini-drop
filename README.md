@@ -27,10 +27,10 @@ PID / 采样时长 / 采样率，平台把采集任务下发到 Agent，用 `per
 
 | 组件 | 语言 | 职责 |
 |---|---|---|
-| `web` | React + TS + ECharts | 建任务 / 看任务列表 / 看火焰图与热点 |
-| `server` | Python FastAPI + PostgreSQL | 任务编排、任务状态机、Agent 心跳/离线、落库 |
-| `agent` | Python | 心跳上报、领取任务、调用 perf/py-spy/bpftrace、上传产物 |
-| `analyzer` | Python | 把折叠栈/原始数据转成火焰图 SVG + 热点 JSON |
+| `web` | React + TS + ECharts | 建任务、状态/审计时间线、火焰图、热点、eBPF 延迟分布、持续采样回放 |
+| `server` | Python FastAPI + PostgreSQL | 任务编排、状态机、Agent 心跳/离线、审计、持续采样切片索引 |
+| `agent` | Python | 心跳、领取任务、调用 perf/py-spy/bpftrace、持续切片、上传产物 |
+| `analyzer` | Python | 折叠栈/原始数据转火焰图 SVG、热点 JSON 和 eBPF 分布 JSON |
 
 ## 任务状态机
 
@@ -60,9 +60,32 @@ git clone <repo> && cd mini-drop
 make demo          # docker compose up + 初始化 + 打开 http://localhost:8080
 ```
 
-详见 [docs/](docs/)（设计文档随开发补全）。
+测试命令：
+
+```bash
+make unit          # 单元测试
+make e2e           # 需要先启动完整服务栈；预期 3 passed
+```
+
+当前 E2E 用例覆盖正常采集、非法 PID、Agent 离线与恢复。若 Server 不可达，测试文件会
+被 pytest 标记为 skipped，因此验收时必须确认输出为 `3 passed`，不能只看退出码。
+
+设计文档将在 `docs/` 中随最终交付补齐。
+
+## 已实现能力
+
+- 按需 perf / py-spy / eBPF 采集与可视化。
+- `PENDING → RUNNING → UPLOADING → DONE / FAILED` 状态迁移审计。
+- Agent 5 秒心跳、30 秒离线检测及离线/恢复审计。
+- py-spy 持续采样：按时间切片、时间轴展示、选择窗口后在线合并火焰图。
+- 21 条单元测试通过，覆盖率 82%；3 条端到端测试通过。
+
+Continuous Profiling 当前实现为**有限时长会话**：会话时长 1–3600 秒、切片时长
+1–60 秒，仅支持 py-spy。窗口回放以切片为最小粒度，边缘会包含与所选窗口重叠的完整
+切片。真正无限常驻、主动停止、保留策略和 perf 持续模式属于后续增强。
 
 ## 开发状态
 
-当前进度：**第一版最小闭环开发中**（建任务 → 心跳领取 → perf/py-spy 采集 → 火焰图展示）。
-扩展能力（Continuous Profiling、eBPF、智能归因）随后迭代。
+基础能力及必做扩展（Continuous Profiling、eBPF、语言级 py-spy 采集器）已经实现并在
+WSL2 Ubuntu 22.04 上验证。当前进入交付收尾阶段：干净环境复现、设计文档、演示视频；
+智能归因和自然语言采集仍为未实现的可选加分项。
