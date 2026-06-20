@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { Attribution, EbpfDist, TaskDetail as Task, TimelineEntry, TopN } from "../types";
+import type { Artifact, Attribution, EbpfDist, TaskDetail as Task, TimelineEntry, TopN } from "../types";
 import { StatusBadge } from "../App";
 import { TopNChart } from "../components/TopNChart";
 import { EbpfChart } from "../components/EbpfChart";
@@ -16,7 +16,16 @@ export function TaskDetail({ tid }: { tid: string }) {
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [windowSrc, setWindowSrc] = useState("");
   const [attribution, setAttribution] = useState<Attribution | null>(null);
+  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [error, setError] = useState("");
+
+  const refreshArtifacts = async () => {
+    try {
+      setArtifacts(await api.listArtifacts(tid));
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   useEffect(() => {
     let stop = false;
@@ -25,6 +34,7 @@ export function TaskDetail({ tid }: { tid: string }) {
         const t = await api.getTask(tid);
         if (stop) return;
         setTask(t);
+        await refreshArtifacts();
         // Once analysis is done, fetch the result artifact (TopN or eBPF) once.
         if (t.analysis_status === "DONE" && t.result_files.topn && !top) {
           try {
@@ -164,12 +174,47 @@ export function TaskDetail({ tid }: { tid: string }) {
             {task.analysis_status === "DONE" && (
               <section className="card span2">
                 <h2>🤖 智能归因（AI）</h2>
-                <AttributionPanel tid={task.tid} initial={attribution} />
+                <AttributionPanel tid={task.tid} initial={attribution} onCompleted={refreshArtifacts} />
               </section>
             )}
           </>
         )}
+
+        <section className="card span2">
+          <h2>任务产物（{artifacts.length} 个文件）</h2>
+          {artifacts.length ? (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>类型</th><th>文件</th><th>大小</th><th>操作</th></tr></thead>
+                <tbody>
+                  {artifacts.map((artifact) => {
+                    const viewable = artifact.content_type.startsWith("text/") ||
+                      artifact.content_type.startsWith("image/") || artifact.content_type === "application/json";
+                    return (
+                      <tr key={artifact.path}>
+                        <td>{artifact.logical_name || artifact.content_type}</td>
+                        <td><code>{artifact.path}</code></td>
+                        <td>{formatBytes(artifact.size_bytes)}</td>
+                        <td><div className="actions">
+                          {viewable &&
+                            <a href={api.artifactUrl(task.tid, artifact.path)} target="_blank" rel="noreferrer">查看</a>}
+                          <a href={api.artifactUrl(task.tid, artifact.path, true)}>下载</a>
+                        </div></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : <p className="muted">任务产物生成后会显示在这里。</p>}
+        </section>
       </div>
     </div>
   );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

@@ -35,7 +35,7 @@ def test_healthz(client):
 
 def test_create_and_list(client):
     tid = _create(client, agent_id="lister")
-    listed = client.get("/api/v1/tasks").json()
+    listed = client.get("/api/v1/tasks").json()["items"]
     assert any(t["tid"] == tid and t["status"] == "PENDING" for t in listed)
 
 
@@ -100,7 +100,76 @@ def test_soft_delete(client):
     tid = _create(client, agent_id="deleter")
     assert client.delete(f"/api/v1/tasks/{tid}").status_code == 200
     assert client.get(f"/api/v1/tasks/{tid}").status_code == 404
-    assert all(t["tid"] != tid for t in client.get("/api/v1/tasks").json())
+    assert all(t["tid"] != tid for t in client.get("/api/v1/tasks").json()["items"])
+
+
+def test_task_list_search_filter_and_pagination(client):
+    marker = "search-suite-unique"
+    first = client.post("/api/v1/tasks", json={
+        "name": f"{marker}-alpha", "target_pid": 41001, "profiler_type": "pyspy",
+        "agent_id": "search-a",
+    })
+    second = client.post("/api/v1/tasks", json={
+        "name": f"{marker}-beta", "target_pid": 41002, "profiler_type": "perf",
+        "agent_id": "search-b",
+    })
+    assert first.status_code == 200 and second.status_code == 200
+
+    page = client.get("/api/v1/tasks", params={"q": marker, "page": 1, "page_size": 1}).json()
+    assert page["total"] == 2 and len(page["items"]) == 1
+    assert page["page"] == 1 and page["page_size"] == 1
+
+    perf_only = client.get("/api/v1/tasks", params={
+        "q": marker, "status": "PENDING", "profiler_type": "perf",
+    }).json()
+    assert perf_only["total"] == 1
+    assert perf_only["items"][0]["target_pid"] == 41002
+
+
+def test_retry_copies_finished_task_parameters(client):
+    source = client.post("/api/v1/tasks", json={
+        "name": "retry-source", "target_pid": 42001, "duration_sec": 17,
+        "frequency_hz": 77, "profiler_type": "pyspy", "agent_id": "retry-agent",
+    }).json()["tid"]
+    assert client.post(f"/api/v1/tasks/{source}/retry").status_code == 409
+
+    client.post("/api/v1/agent/heartbeat", json={
+        "agent_id": "retry-agent", "hostname": "h", "ip_addr": "1.1.1.1",
+    })
+    client.post(f"/api/v1/agent/tasks/{source}/result", json={
+        "success": False, "error_message": "synthetic failure",
+    })
+    retried = client.post(f"/api/v1/tasks/{source}/retry")
+    assert retried.status_code == 200
+    new_tid = retried.json()["tid"]
+    detail = client.get(f"/api/v1/tasks/{new_tid}").json()
+    assert detail["status"] == "PENDING"
+    assert detail["name"] == "retry-source"
+    assert detail["target_pid"] == 42001
+    assert detail["duration_sec"] == 17 and detail["frequency_hz"] == 77
+    assert detail["agent_id"] == "retry-agent"
+    assert detail["status_reason"] == f"retried from task {source}"
+
+
+def test_artifact_listing_and_nested_download(client):
+    tid = _create(client, agent_id="artifacts")
+    out_dir = os.path.join(settings.artifacts_dir, tid)
+    nested = os.path.join(out_dir, "chunks")
+    os.makedirs(nested, exist_ok=True)
+    with open(os.path.join(out_dir, "summary.json"), "w", encoding="utf-8") as f:
+        json.dump({"ok": True}, f)
+    with open(os.path.join(nested, "slice.folded"), "w", encoding="utf-8") as f:
+        f.write("main;work 3\n")
+
+    artifacts = client.get(f"/api/v1/tasks/{tid}/artifacts")
+    assert artifacts.status_code == 200
+    paths = {item["path"] for item in artifacts.json()}
+    assert paths == {"summary.json", "chunks/slice.folded"}
+
+    nested_file = client.get(f"/api/v1/tasks/{tid}/artifacts/chunks/slice.folded")
+    assert nested_file.status_code == 200 and nested_file.text.strip() == "main;work 3"
+    downloaded = client.get(f"/api/v1/tasks/{tid}/artifacts/summary.json", params={"download": True})
+    assert "attachment" in downloaded.headers.get("content-disposition", "")
 
 
 def test_unknown_task_404(client):

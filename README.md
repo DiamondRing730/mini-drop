@@ -27,7 +27,7 @@ PID / 采样时长 / 采样率，平台把采集任务下发到 Agent，用 `per
 
 | 组件 | 语言 | 职责 |
 |---|---|---|
-| `web` | React + TS + ECharts | 建任务、状态/审计时间线、火焰图、热点、eBPF 延迟分布、持续采样回放 |
+| `web` | React + TS + ECharts | 建任务、搜索筛选分页、失败任务重试、产物查看下载、状态/审计时间线、火焰图、热点、eBPF 延迟分布、持续采样回放 |
 | `server` | Python FastAPI + PostgreSQL | 任务编排、状态机、Agent 心跳/离线、审计、持续采样切片索引 |
 | `agent` | Python | 心跳、领取任务、调用 perf/py-spy/bpftrace、持续切片、上传产物 |
 | `analyzer` | Python | 折叠栈/原始数据转火焰图 SVG、热点 JSON 和 eBPF 分布 JSON |
@@ -79,7 +79,9 @@ make e2e           # 需要先启动完整服务栈；预期 3 passed
 - Agent 5 秒心跳、30 秒离线检测及离线/恢复审计。
 - py-spy 持续采样：按时间切片、时间轴展示、选择窗口后在线合并火焰图。
 - 智能归因：页面可显式选择离线归因或 DeepSeek；两者共享只读工具和独立校验器。
-- 34 条单元测试用例、3 条端到端测试用例；最近完整单测覆盖率 80%。归因基准见
+- 任务列表支持名称/ID/PID 搜索、状态/采集器筛选、分页和失败原因展示。
+- 已结束任务可按原参数一键重试；详情页可列出、查看和下载原始及分析产物。
+- 37 条单元测试用例、3 条端到端测试用例；最近完整单测覆盖率约 80%。归因基准见
   [docs/attribution-evaluation.md](docs/attribution-evaluation.md)。
 
 Continuous Profiling 当前实现为**有限时长会话**：会话时长 1–3600 秒、切片时长

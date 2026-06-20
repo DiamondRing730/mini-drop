@@ -53,6 +53,20 @@ class TaskDetail(TaskSummary):
     transitions: list[TransitionOut]
 
 
+class TaskListResponse(BaseModel):
+    items: list[TaskSummary]
+    total: int
+    page: int
+    page_size: int
+
+
+class ArtifactOut(BaseModel):
+    path: str
+    logical_name: str | None = None
+    size_bytes: int
+    content_type: str
+
+
 class AgentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str

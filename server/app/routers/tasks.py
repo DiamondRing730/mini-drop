@@ -1,10 +1,12 @@
 """Frontend-facing task APIs: create / list / detail / soft-delete / artifact download."""
 import logging
+import mimetypes
 import os
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .. import flame
@@ -13,7 +15,13 @@ from ..db import get_session
 from ..enums import TaskStatus
 from ..logging_config import log_event
 from ..models import ProfileChunk, Task
-from ..schemas import CreateTaskRequest, TaskDetail, TaskSummary, TimelineEntry
+from ..schemas import (
+    ArtifactOut,
+    CreateTaskRequest,
+    TaskDetail,
+    TaskListResponse,
+    TimelineEntry,
+)
 from ..state import record_initial
 from ..util import short_id, utcnow
 
@@ -46,20 +54,38 @@ def create_task(req: CreateTaskRequest, session: Session = Depends(get_session))
     return {"tid": tid}
 
 
-@router.get("/tasks", response_model=list[TaskSummary])
+@router.get("/tasks", response_model=TaskListResponse)
 def list_tasks(
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    q: str = Query(default="", max_length=255),
+    status: str | None = Query(default=None),
+    profiler_type: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
     session: Session = Depends(get_session),
 ):
+    filters = [Task.deleted.is_(False)]
+    query_text = q.strip()
+    if query_text:
+        search_terms = [
+            Task.name.ilike(f"%{query_text}%"),
+            Task.tid.ilike(f"%{query_text}%"),
+        ]
+        if query_text.isdigit():
+            search_terms.append(Task.target_pid == int(query_text))
+        filters.append(or_(*search_terms))
+    if status:
+        filters.append(Task.status == status)
+    if profiler_type:
+        filters.append(Task.profiler_type == profiler_type)
+
+    total = session.scalar(select(func.count()).select_from(Task).where(*filters)) or 0
     rows = session.execute(
-        select(Task)
-        .where(Task.deleted.is_(False))
+        select(Task).where(*filters)
         .order_by(Task.created_at.desc())
-        .limit(limit)
-        .offset(offset)
+        .limit(page_size)
+        .offset((page - 1) * page_size)
     ).scalars().all()
-    return rows
+    return {"items": rows, "total": total, "page": page, "page_size": page_size}
 
 
 def _get_task_or_404(session: Session, tid: str) -> Task:
@@ -83,21 +109,87 @@ def delete_task(tid: str, session: Session = Depends(get_session)):
     return {"deleted": tid}
 
 
-@router.get("/tasks/{tid}/artifacts/{filename}")
-def get_artifact(tid: str, filename: str, session: Session = Depends(get_session)):
+@router.post("/tasks/{tid}/retry", response_model=dict)
+def retry_task(tid: str, session: Session = Depends(get_session)):
+    source = _get_task_or_404(session, tid)
+    if source.status not in {TaskStatus.DONE.value, TaskStatus.FAILED.value}:
+        raise HTTPException(status_code=409, detail="only finished or failed tasks can be retried")
+
+    new_tid = short_id()
+    reason = f"retried from task {source.tid}"
+    task = Task(
+        tid=new_tid,
+        name=source.name,
+        target_pid=source.target_pid,
+        duration_sec=source.duration_sec,
+        frequency_hz=source.frequency_hz,
+        profiler_type=source.profiler_type,
+        mode=source.mode,
+        slice_sec=source.slice_sec,
+        agent_id=source.agent_id,
+        status=TaskStatus.PENDING.value,
+        status_reason=reason,
+        created_at=utcnow(),
+    )
+    session.add(task)
+    session.flush()
+    record_initial(session, task, reason)
+    session.commit()
+    log_event(logger, "task retried", tid=new_tid, source_tid=source.tid)
+    return {"tid": new_tid, "source_tid": source.tid}
+
+
+def _artifact_root(tid: str) -> Path:
+    return (Path(settings.artifacts_dir) / tid).resolve()
+
+
+@router.get("/tasks/{tid}/artifacts", response_model=list[ArtifactOut])
+def list_artifacts(tid: str, session: Session = Depends(get_session)):
+    task = _get_task_or_404(session, tid)
+    root = _artifact_root(tid)
+    if not root.is_dir():
+        return []
+
+    logical_by_path = {
+        str(filename).replace("\\", "/"): logical
+        for logical, filename in (task.result_files or {}).items()
+        if isinstance(filename, str)
+    }
+    artifacts = []
+    for candidate in root.rglob("*"):
+        resolved = candidate.resolve()
+        if not resolved.is_file() or not resolved.is_relative_to(root):
+            continue
+        relative = resolved.relative_to(root).as_posix()
+        content_type = mimetypes.guess_type(relative)[0] or "application/octet-stream"
+        artifacts.append({
+            "path": relative,
+            "logical_name": logical_by_path.get(relative),
+            "size_bytes": resolved.stat().st_size,
+            "content_type": content_type,
+        })
+    return sorted(artifacts, key=lambda item: item["path"])
+
+
+@router.get("/tasks/{tid}/artifacts/{file_path:path}")
+def get_artifact(
+    tid: str,
+    file_path: str,
+    download: bool = Query(default=False),
+    session: Session = Depends(get_session),
+):
     _get_task_or_404(session, tid)
-    # basename guard: never let a crafted filename escape the task's artifact dir.
-    safe = os.path.basename(filename)
-    path = os.path.join(settings.artifacts_dir, tid, safe)
-    if not os.path.isfile(path):
-        raise HTTPException(status_code=404, detail=f"artifact {safe} not found")
-    media = "image/svg+xml" if safe.endswith(".svg") else None
+    root = _artifact_root(tid)
+    path = (root / file_path).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        raise HTTPException(status_code=404, detail=f"artifact {file_path} not found")
+    media = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
     # Flamegraphs are rendered inside the Web UI's iframe.  Any Content-Disposition
     # header can make browsers treat the SVG as a download, so omit it entirely for SVGs.
     # Other artifacts retain explicit attachment/download semantics.
-    if safe.endswith(".svg"):
+    if path.suffix.lower() == ".svg" and not download:
         return FileResponse(path, media_type=media)
-    return FileResponse(path, media_type=media, filename=safe)
+    return FileResponse(path, media_type=media, filename=path.name)
 
 
 # ---- continuous profiling: timeline + on-demand window flamegraph ----

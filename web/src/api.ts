@@ -1,4 +1,4 @@
-import type { Agent, AgentEvent, Attribution, AttributionEngine, EbpfDist, TaskDetail, TaskSummary, TimelineEntry, TopN } from "./types";
+import type { Agent, AgentEvent, Artifact, Attribution, AttributionEngine, EbpfDist, TaskDetail, TaskListResponse, TimelineEntry, TopN } from "./types";
 
 const BASE = "/api/v1";
 
@@ -31,15 +31,43 @@ export interface CreateTaskBody {
   agent_id?: string | null;
 }
 
+export interface TaskListQuery {
+  q?: string;
+  status?: string;
+  profiler_type?: string;
+  page?: number;
+  page_size?: number;
+}
+
+function queryString(params: TaskListQuery): string {
+  const qs = new URLSearchParams();
+  if (params.q) qs.set("q", params.q);
+  if (params.status) qs.set("status", params.status);
+  if (params.profiler_type) qs.set("profiler_type", params.profiler_type);
+  if (params.page) qs.set("page", String(params.page));
+  if (params.page_size) qs.set("page_size", String(params.page_size));
+  const value = qs.toString();
+  return value ? `?${value}` : "";
+}
+
+function encodeArtifactPath(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
 export const api = {
   listAgents: () => j<Agent[]>(`${BASE}/agents`),
   getAgentEvents: (id: string) => j<AgentEvent[]>(`${BASE}/agents/${id}/events`),
-  listTasks: () => j<TaskSummary[]>(`${BASE}/tasks`),
+  listTasks: (params: TaskListQuery = {}) =>
+    j<TaskListResponse>(`${BASE}/tasks${queryString(params)}`),
   getTask: (tid: string) => j<TaskDetail>(`${BASE}/tasks/${tid}`),
   createTask: (body: CreateTaskBody) =>
     j<{ tid: string }>(`${BASE}/tasks`, { method: "POST", body: JSON.stringify(body) }),
   deleteTask: (tid: string) => j<unknown>(`${BASE}/tasks/${tid}`, { method: "DELETE" }),
-  artifactUrl: (tid: string, name: string) => `${BASE}/tasks/${tid}/artifacts/${name}`,
+  retryTask: (tid: string) =>
+    j<{ tid: string; source_tid: string }>(`${BASE}/tasks/${tid}/retry`, { method: "POST" }),
+  listArtifacts: (tid: string) => j<Artifact[]>(`${BASE}/tasks/${tid}/artifacts`),
+  artifactUrl: (tid: string, name: string, download = false) =>
+    `${BASE}/tasks/${tid}/artifacts/${encodeArtifactPath(name)}${download ? "?download=true" : ""}`,
   getTopN: (tid: string, name: string) => j<TopN>(`${BASE}/tasks/${tid}/artifacts/${name}`),
   getEbpf: (tid: string, name: string) => j<EbpfDist>(`${BASE}/tasks/${tid}/artifacts/${name}`),
   getTimeline: (tid: string) => j<TimelineEntry[]>(`${BASE}/tasks/${tid}/timeline`),

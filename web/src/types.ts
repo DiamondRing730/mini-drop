@@ -40,6 +40,20 @@ export interface TaskSummary {
   created_at: string;
 }
 
+export interface TaskListResponse {
+  items: TaskSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface Artifact {
+  path: string;
+  logical_name: string | null;
+  size_bytes: number;
+  content_type: string;
+}
+
 export interface TaskDetail extends TaskSummary {
   duration_sec: number;
   frequency_hz: number;

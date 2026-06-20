@@ -4,15 +4,29 @@ import type { Agent, AgentEvent, TaskSummary } from "../types";
 import { StatusBadge } from "../App";
 
 export function Home() {
+  const pageSize = 8;
   const [agents, setAgents] = useState<Agent[]>([]);
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [events, setEvents] = useState<(AgentEvent & { agent_id: string })[]>([]);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [profilerFilter, setProfilerFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
   const refresh = async () => {
     try {
-      const [a, t] = await Promise.all([api.listAgents(), api.listTasks()]);
+      const [a, t] = await Promise.all([
+        api.listAgents(),
+        api.listTasks({
+          q: query.trim(), status: statusFilter, profiler_type: profilerFilter,
+          page, page_size: pageSize,
+        }),
+      ]);
       setAgents(a);
-      setTasks(t);
+      setTasks(t.items);
+      setTotal(t.total);
+      if (t.items.length === 0 && page > 1 && t.total > 0) setPage(page - 1);
       // Merge each agent's audit trail into one recent-events feed.
       const perAgent = await Promise.all(
         a.map((ag) =>
@@ -33,7 +47,11 @@ export function Home() {
     refresh();
     const id = setInterval(refresh, 3000);
     return () => clearInterval(id);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, statusFilter, profilerFilter, page]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const resetPage = () => setPage(1);
 
   return (
     <div className="grid">
@@ -46,8 +64,34 @@ export function Home() {
         <CreateForm agents={agents} onCreated={refresh} />
       </section>
       <section className="card span2">
-        <h2>任务 ({tasks.length})</h2>
-        <TaskTable tasks={tasks} onChange={refresh} />
+        <h2>任务（共 {total} 条）</h2>
+        <div className="task-filters">
+          <input
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); resetPage(); }}
+            placeholder="搜索任务名称、ID或PID"
+          />
+          <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); resetPage(); }}>
+            <option value="">全部状态</option>
+            <option value="PENDING">PENDING</option>
+            <option value="RUNNING">RUNNING</option>
+            <option value="UPLOADING">UPLOADING</option>
+            <option value="DONE">DONE</option>
+            <option value="FAILED">FAILED</option>
+          </select>
+          <select value={profilerFilter} onChange={(e) => { setProfilerFilter(e.target.value); resetPage(); }}>
+            <option value="">全部采集器</option>
+            <option value="pyspy">py-spy</option>
+            <option value="perf">perf</option>
+            <option value="ebpf">eBPF</option>
+          </select>
+        </div>
+        <TaskTable tasks={tasks} onChange={refresh} onRetried={() => setPage(1)} />
+        <div className="pagination">
+          <button className="ghost" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>上一页</button>
+          <span className="muted">第 {page} / {totalPages} 页</span>
+          <button className="ghost" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>下一页</button>
+        </div>
       </section>
       <section className="card span2">
         <h2>Agent 审计日志</h2>
@@ -80,6 +124,7 @@ function AgentTable({ agents }: { agents: Agent[] }) {
 }
 
 function CreateForm({ agents, onCreated }: { agents: Agent[]; onCreated: () => void }) {
+  const [name, setName] = useState("");
   const [pid, setPid] = useState("");
   const [duration, setDuration] = useState(10);
   const [freq, setFreq] = useState(99);
@@ -98,6 +143,7 @@ function CreateForm({ agents, onCreated }: { agents: Agent[]; onCreated: () => v
     setBusy(true);
     try {
       const body: CreateTaskBody = {
+        name: name.trim() || undefined,
         target_pid: effectiveProfiler === "ebpf" ? Number(pid) || 0 : Number(pid),
         duration_sec: duration,
         frequency_hz: freq,
@@ -107,6 +153,7 @@ function CreateForm({ agents, onCreated }: { agents: Agent[]; onCreated: () => v
         agent_id: agentId || null,
       };
       await api.createTask(body);
+      setName("");
       setPid("");
       onCreated();
     } catch (e: any) {
@@ -118,6 +165,8 @@ function CreateForm({ agents, onCreated }: { agents: Agent[]; onCreated: () => v
 
   return (
     <form onSubmit={submit}>
+      <label>任务名称（可选）</label>
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="例如 API CPU 排查" />
       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <input type="checkbox" checked={continuous} style={{ width: "auto" }}
                onChange={(e) => setContinuous(e.target.checked)} />
@@ -169,35 +218,68 @@ function CreateForm({ agents, onCreated }: { agents: Agent[]; onCreated: () => v
   );
 }
 
-function TaskTable({ tasks, onChange }: { tasks: TaskSummary[]; onChange: () => void }) {
-  if (tasks.length === 0) return <p className="muted">还没有任务，去左侧新建一个。</p>;
+function TaskTable({ tasks, onChange, onRetried }: {
+  tasks: TaskSummary[];
+  onChange: () => void;
+  onRetried: () => void;
+}) {
+  const [actionErr, setActionErr] = useState("");
+  if (tasks.length === 0) return <p className="muted">没有符合条件的任务。</p>;
   const del = async (tid: string) => {
-    await api.deleteTask(tid);
-    onChange();
+    try {
+      setActionErr("");
+      await api.deleteTask(tid);
+      onChange();
+    } catch (e: any) {
+      setActionErr(String(e.message || e));
+    }
+  };
+  const retry = async (tid: string) => {
+    try {
+      setActionErr("");
+      await api.retryTask(tid);
+      onRetried();
+      onChange();
+    } catch (e: any) {
+      setActionErr(String(e.message || e));
+    }
   };
   return (
-    <table>
-      <thead>
-        <tr>
-          <th>任务</th><th>PID</th><th>采集器</th><th>模式</th><th>采集状态</th>
-          <th>分析状态</th><th>创建时间</th><th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {tasks.map((t) => (
-          <tr key={t.tid}>
-            <td><a href={`#/task/${t.tid}`}>{t.name || t.tid}</a></td>
-            <td>{t.target_pid}</td>
-            <td>{t.profiler_type}</td>
-            <td>{t.mode === "continuous" ? "持续" : "单次"}</td>
-            <td><StatusBadge status={t.status} /></td>
-            <td><span className={`badge b-${t.analysis_status}`}>{t.analysis_status}</span></td>
-            <td className="muted">{new Date(t.created_at).toLocaleString()}</td>
-            <td><button className="ghost" onClick={() => del(t.tid)}>删除</button></td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <>
+      {actionErr && <p className="err">{actionErr}</p>}
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>任务</th><th>PID</th><th>采集器</th><th>模式</th><th>采集状态</th>
+              <th>分析状态</th><th>创建时间</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tasks.map((t) => (
+              <tr key={t.tid}>
+                <td>
+                  <a href={`#/task/${t.tid}`}>{t.name || t.tid}</a>
+                  {t.status === "FAILED" &&
+                    <div className="failure-reason" title={t.status_reason}>{t.status_reason}</div>}
+                </td>
+                <td>{t.target_pid}</td>
+                <td>{t.profiler_type}</td>
+                <td>{t.mode === "continuous" ? "持续" : "单次"}</td>
+                <td><StatusBadge status={t.status} /></td>
+                <td><span className={`badge b-${t.analysis_status}`}>{t.analysis_status}</span></td>
+                <td className="muted">{new Date(t.created_at).toLocaleString()}</td>
+                <td><div className="actions">
+                  {(t.status === "DONE" || t.status === "FAILED") &&
+                    <button className="ghost" onClick={() => retry(t.tid)}>重试</button>}
+                  <button className="ghost" onClick={() => del(t.tid)}>删除</button>
+                </div></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 

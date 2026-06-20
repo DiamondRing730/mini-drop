@@ -5,7 +5,11 @@ import type { Attribution, AttributionEngine } from "../types";
 // AI smart attribution panel: runs the constrained tool-calling analyst on demand,
 // shows the ranked root-cause findings, and — crucially — the verification report
 // that independently re-checks every number against the raw profile.
-export function AttributionPanel({ tid, initial }: { tid: string; initial: Attribution | null }) {
+export function AttributionPanel({ tid, initial, onCompleted }: {
+  tid: string;
+  initial: Attribution | null;
+  onCompleted?: () => void | Promise<void>;
+}) {
   const [attr, setAttr] = useState<Attribution | null>(initial);
   const [engine, setEngine] = useState<AttributionEngine>(initial?.engine === "deepseek" ? "deepseek" : "offline");
   const [busy, setBusy] = useState(false);
@@ -23,6 +27,7 @@ export function AttributionPanel({ tid, initial }: { tid: string; initial: Attri
     setErr("");
     try {
       setAttr(await api.runAttribution(tid, engine));
+      await onCompleted?.();
     } catch (e: any) {
       setErr(String(e.message || e));
     } finally {

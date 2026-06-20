@@ -6,18 +6,18 @@
 
 四个组件（web / server / agent / analyzer）+ Postgres 已用 `docker compose` 一键起，
 端到端验证通过：建任务 → 状态机流转 → py-spy 采集 → 分析出火焰图 + 热点 → Web 展示。
-单测 34 个全过、覆盖率 80%；E2E 正常、坏 PID、Agent 离线恢复三条路径均为 `passed`。
+单测 37 个全过、覆盖率约 80%；E2E 正常、坏 PID、Agent 离线恢复三条路径均为 `passed`。
 
 ## 已完成 ✅
 
 | 模块 | 内容 | 验证 |
 |---|---|---|
-| **server** (FastAPI+PG) | 5 张表（含 `profile_chunks`）、任务状态机（每次迁移落库带 reason）、任务 CRUD、Agent 心跳+原子领取（`FOR UPDATE SKIP LOCKED`）、30s 离线检测、审计日志、持续采样时间轴/窗口接口、JSON 结构化日志 | 单测 + 实跑 |
+| **server** (FastAPI+PG) | 5 张表（含 `profile_chunks`）、任务状态机（每次迁移落库带 reason）、任务 CRUD/筛选分页/按原参数重试、产物清单与安全下载、Agent 心跳+原子领取（`FOR UPDATE SKIP LOCKED`）、30s 离线检测、审计日志、持续采样时间轴/窗口接口、JSON 结构化日志 | 单测 + 实跑 |
 | **agent** (Python) | 5s 心跳线程 + worker 线程、perf（cpu-clock）、py-spy、bpftrace、/proc 自监控、持续 py-spy 切片、产物写共享 volume | 实跑 |
 | **analyzer** (Python) | 纯 Python stackcollapse + 火焰图 SVG、TopN、tree.json、eBPF 直方图解析、轮询领取 | 单测 + 实跑 |
-| **web** (React+TS+ECharts) | 首页、任务/审计时间线、火焰图、TopN、eBPF 延迟分布、持续采样回放、离线/DeepSeek 归因选择与校验面板 | 构建通过 + 实跑 |
+| **web** (React+TS+ECharts) | 首页、任务搜索/筛选/分页、失败原因与一键重试、产物查看下载、任务/审计时间线、火焰图、TopN、eBPF 延迟分布、持续采样回放、离线/DeepSeek 归因选择与校验面板 | 构建通过 + 实跑 |
 | **infra** | 各组件 Dockerfile、docker-compose（agent: privileged + pid:host）、Makefile（`make demo`）、demo 工作负载 | `compose up` 通过 |
-| **tests** | 单测：状态机 / API / analyzer / eBPF / continuous / attribution；E2E：正常路径 + 坏 PID + Agent 离线恢复 | 单测 34/34、E2E 3/3，80% 覆盖 |
+| **tests** | 单测：状态机 / API / analyzer / eBPF / continuous / attribution / 任务筛选分页 / 重试 / 产物下载；E2E：正常路径 + 坏 PID + Agent 离线恢复 | 单测 37/37、E2E 3/3，约 80% 覆盖 |
 
 ## 实跑验证结果（本机 WSL2 Ubuntu-22.04 + Docker Desktop）
 
@@ -34,7 +34,8 @@
   `GET /tasks/{tid}/timeline` 时间轴 + `GET /tasks/{tid}/window?from&to` **按任意窗口在线合并渲染火焰图**
   （实测子窗口=2 切片=1582 样本，全窗口=5 切片），Web 有时间轴拖选 + 窗口火焰图
 - ✅ **3 条 E2E**（WSL 原生 venv）→ **3 passed**（正常 / 坏PID / Agent 离线恢复）
-- ✅ **单测**：`pytest tests/unit` → **34 passed；覆盖率 80%**（含 eBPF/flame/continuous/attribution）
+- ✅ **任务管理增强（真跑）**：按名称/ID/PID 搜索、状态/采集器筛选和分页可用；真实 `e2e` 任务产物清单与下载大小一致；按原参数重试后采集/分析再次 `DONE`，生成 flamegraph/TopN/tree/原始 folded 共 4 个文件。
+- ✅ **单测**：`pytest tests/unit` → **37 passed；覆盖率约 80%**（含 eBPF/flame/continuous/attribution/筛选分页/重试/产物下载）
 - ✅ **Agent 离线恢复 + 审计日志**：停 agent → 30s 后 `online=false` 且写 `OFFLINE` 审计；重启 → 3s 内 `online=true` 且写 `RECOVER`。审计轨迹 `REGISTER→OFFLINE→RECOVER` 经新接口 `GET /api/v1/agents/{id}/events` 可见
 
 ## 当前能力边界
