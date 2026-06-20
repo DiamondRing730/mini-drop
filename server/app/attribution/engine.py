@@ -1,106 +1,26 @@
-"""Attribution engine: a constrained tool-calling analyst over a profile.
+"""Attribution engine with two explicitly selected backends.
 
-Two execution paths produce the same shape of result (`AttributionResult`):
-
-1. LLM path (when ANTHROPIC_API_KEY is set and the `anthropic` SDK is importable):
-   a real manual tool-use loop on Claude. The model may ONLY see the profile through
-   the read-only tools in tools.py; it ends by calling `submit_attribution`. This is the
-   "LLM can only call user-defined tools" requirement.
-
-2. Heuristic path (no key / SDK / network): a deterministic analyst that calls the same
-   tools and fills in the same structured findings. Guarantees the feature is always
-   demoable offline and adds no hard dependency to the build.
-
-Either way the verifier (verifier.py) independently re-checks the numbers, so the engine
-output is never trusted blind.
+``offline`` is deterministic and always available. ``deepseek`` runs a real function-
+calling loop and requires a configured API key. Both use the same read-only tools and
+the verifier independently checks every reported hotspot percentage.
 """
 import json
-import logging
 import os
 
-from .deepseek import run_deepseek
+from .deepseek import DeepSeekError, run_deepseek
 from .profile import Profile, hot_path, top_functions
-from .tools import SYSTEM_PROMPT, TOOL_DEFS, dispatch
-
-logger = logging.getLogger("minidrop.attribution")
-
-MODEL = "claude-opus-4-8"
-MAX_TOOL_ITERATIONS = 12
+from .tools import dispatch
 
 
 class AttributionResult(dict):
     """{engine, summary, findings:[...], tool_trace:[...], model?}. A dict for trivial JSON."""
 
 
-def _run_claude(prof: Profile) -> AttributionResult | None:
-    """Real Claude tool-use loop. Returns None if the SDK/key/network is unavailable."""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        return None
-    try:
-        import anthropic
-    except ImportError:
-        return None
-
-    client = anthropic.Anthropic()
-    messages = [{
-        "role": "user",
-        "content": (
-            f"Analyze the profile for task {prof.tid} (profiler: {prof.profiler}). "
-            "Find the CPU/latency root cause and propose optimizations. "
-            "Inspect it only through the tools, then call submit_attribution."
-        ),
-    }]
-    tool_trace: list[dict] = []
-
-    try:
-        for _ in range(MAX_TOOL_ITERATIONS):
-            resp = client.messages.create(
-                model=MODEL,
-                max_tokens=16000,
-                thinking={"type": "adaptive"},
-                system=SYSTEM_PROMPT,
-                tools=TOOL_DEFS,
-                messages=messages,
-            )
-            if resp.stop_reason == "refusal":
-                logger.warning("attribution refused by model for %s", prof.tid)
-                return None
-
-            tool_uses = [b for b in resp.content if b.type == "tool_use"]
-            if not tool_uses:
-                # Model stopped without submitting — treat as no structured result.
-                return None
-
-            # Append the assistant turn verbatim (preserves thinking + tool_use blocks).
-            messages.append({"role": "assistant", "content": resp.content})
-
-            results = []
-            for tu in tool_uses:
-                if tu.name == "submit_attribution":
-                    return AttributionResult(
-                        engine="claude",
-                        model=MODEL,
-                        summary=tu.input.get("summary", ""),
-                        findings=tu.input.get("findings", []),
-                        tool_trace=tool_trace,
-                    )
-                try:
-                    out = dispatch(tu.name, tu.input, prof)
-                    tool_trace.append({"tool": tu.name, "input": tu.input})
-                    results.append({"type": "tool_result", "tool_use_id": tu.id, "content": out})
-                except Exception as exc:  # surface tool errors back to the model
-                    results.append({
-                        "type": "tool_result", "tool_use_id": tu.id,
-                        "content": f"error: {exc}", "is_error": True,
-                    })
-            messages.append({"role": "user", "content": results})
-        return None  # ran out of iterations without submitting
-    except Exception as exc:
-        logger.warning("claude attribution failed for %s: %s", prof.tid, exc)
-        return None
+class AttributionBackendError(RuntimeError):
+    """The explicitly requested attribution backend could not produce a result."""
 
 
-def _run_heuristic(prof: Profile) -> AttributionResult:
+def _run_offline(prof: Profile) -> AttributionResult:
     """Deterministic analyst: walks the same tools, builds the same structured findings.
 
     Ranks by self-time, attributes each hotspot to its dominant caller, and tags whether
@@ -144,7 +64,7 @@ def _run_heuristic(prof: Profile) -> AttributionResult:
         + (f"，调用路径为 {' -> '.join(p['func'] for p in path[:4])}。" if path else "。")
     )
     return AttributionResult(
-        engine="heuristic", summary=summary, findings=findings, tool_trace=tool_trace,
+        engine="offline", summary=summary, findings=findings, tool_trace=tool_trace,
     )
 
 
@@ -165,19 +85,20 @@ def _recommend(func: str, caller: str | None) -> str:
             "建议单独 profile 它，优化其内部逻辑或调用频率。")
 
 
-def attribute(prof: Profile) -> AttributionResult:
-    """Run a real LLM if a key is configured, else the deterministic heuristic.
-
-    Preference: DeepSeek (DEEPSEEK_API_KEY) -> Claude (ANTHROPIC_API_KEY) -> heuristic.
-    All three drive the same read-only tools and produce the same result shape, and the
-    verifier re-checks every number regardless of which backend ran.
-    """
+def attribute(prof: Profile, backend: str = "offline") -> AttributionResult:
+    """Run exactly the backend selected by the user; never silently fall back."""
+    if backend not in {"offline", "deepseek"}:
+        raise AttributionBackendError(f"unsupported attribution backend: {backend}")
     if prof.total_samples <= 0 or not prof.self_samples:
         return AttributionResult(
-            engine="heuristic", summary="No profile data to attribute.",
+            engine=backend, summary="没有可供归因的 profile 数据。",
             findings=[], tool_trace=[],
         )
-    ds = run_deepseek(prof)
-    if ds is not None:
-        return AttributionResult(**ds)
-    return _run_claude(prof) or _run_heuristic(prof)
+    if backend == "offline":
+        return _run_offline(prof)
+    if not os.environ.get("DEEPSEEK_API_KEY"):
+        raise AttributionBackendError("DeepSeek 未配置：请在 .env 中设置 DEEPSEEK_API_KEY")
+    try:
+        return AttributionResult(**run_deepseek(prof))
+    except DeepSeekError as exc:
+        raise AttributionBackendError(str(exc)) from exc

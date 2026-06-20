@@ -59,6 +59,9 @@ button.ghost { background: transparent; color: var(--muted); border: 1px solid v
 .err { color: #fecaca; background: #3b1717; padding: 10px; border-radius: 8px; }
 .back { font-size: 13px; }
 .attr-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.attr-controls { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin-top: 10px; }
+.attr-controls label { margin: 0; min-width: 260px; }
+.attr-controls select { display: block; width: 100%; margin-top: 4px; }
 .findings { list-style: decimal; padding-left: 20px; margin: 8px 0; }
 .findings li { padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
 .findings code { background: #0f1117; padding: 1px 5px; border-radius: 4px; }

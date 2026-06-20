@@ -78,7 +78,9 @@ make e2e           # 需要先启动完整服务栈；预期 3 passed
 - `PENDING → RUNNING → UPLOADING → DONE / FAILED` 状态迁移审计。
 - Agent 5 秒心跳、30 秒离线检测及离线/恢复审计。
 - py-spy 持续采样：按时间切片、时间轴展示、选择窗口后在线合并火焰图。
-- 21 条单元测试通过，覆盖率 82%；3 条端到端测试通过。
+- 智能归因：页面可显式选择离线归因或 DeepSeek；两者共享只读工具和独立校验器。
+- 34 条单元测试用例、3 条端到端测试用例；最近完整单测覆盖率 80%。归因基准见
+  [docs/attribution-evaluation.md](docs/attribution-evaluation.md)。
 
 Continuous Profiling 当前实现为**有限时长会话**：会话时长 1–3600 秒、切片时长
 1–60 秒，仅支持 py-spy。窗口回放以切片为最小粒度，边缘会包含与所选窗口重叠的完整
@@ -86,6 +88,9 @@ Continuous Profiling 当前实现为**有限时长会话**：会话时长 1–36
 
 ## 开发状态
 
-基础能力及必做扩展（Continuous Profiling、eBPF、语言级 py-spy 采集器）已经实现并在
-WSL2 Ubuntu 22.04 上验证。当前进入交付收尾阶段：干净环境复现、设计文档、演示视频；
-智能归因和自然语言采集仍为未实现的可选加分项。
+基础能力、必做扩展（Continuous Profiling、eBPF、语言级 py-spy）和智能归因已实现。
+智能归因默认离线运行；如需 DeepSeek，在 `.env` 配置 `DEEPSEEK_API_KEY` 后从页面选择
+“DeepSeek 归因”。系统不会自动调用外部模型，也不会在失败时静默切换引擎。
+
+当前进入交付收尾阶段：干净环境复现、完整设计文档和演示视频。自然语言采集仍为未实现
+的可选加分项。

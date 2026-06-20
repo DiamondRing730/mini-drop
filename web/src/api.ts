@@ -1,4 +1,4 @@
-import type { Agent, AgentEvent, Attribution, EbpfDist, TaskDetail, TaskSummary, TimelineEntry, TopN } from "./types";
+import type { Agent, AgentEvent, Attribution, AttributionEngine, EbpfDist, TaskDetail, TaskSummary, TimelineEntry, TopN } from "./types";
 
 const BASE = "/api/v1";
 
@@ -8,7 +8,14 @@ async function j<T>(url: string, opts?: RequestInit): Promise<T> {
     ...opts,
   });
   if (!r.ok) {
-    throw new Error(`${r.status} ${await r.text()}`);
+    const text = await r.text();
+    try {
+      const data = JSON.parse(text);
+      throw new Error(data.detail || `${r.status} ${text}`);
+    } catch (e) {
+      if (e instanceof SyntaxError) throw new Error(`${r.status} ${text}`);
+      throw e;
+    }
   }
   return (await r.json()) as T;
 }
@@ -40,6 +47,9 @@ export const api = {
     `${BASE}/tasks/${tid}/window?from=${from}&to=${to}`,
   // AI attribution: get the stored result if present, or run it on demand.
   getAttribution: (tid: string, name: string) => j<Attribution>(`${BASE}/tasks/${tid}/artifacts/${name}`),
-  runAttribution: (tid: string) =>
-    j<Attribution>(`${BASE}/tasks/${tid}/attribution`, { method: "POST" }),
+  runAttribution: (tid: string, engine: AttributionEngine) =>
+    j<Attribution>(`${BASE}/tasks/${tid}/attribution`, {
+      method: "POST",
+      body: JSON.stringify({ engine }),
+    }),
 };

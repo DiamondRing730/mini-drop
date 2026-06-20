@@ -3,6 +3,7 @@
 Covers the routers, the heartbeat+claim path, result reporting and the analysis hand-off.
 Each task is pinned to a unique agent_id so claims never cross between tests.
 """
+import json
 import os
 
 import pytest
@@ -140,3 +141,39 @@ def test_continuous_chunks_timeline_and_window(client):
     client.post(f"/api/v1/agent/tasks/{tid}/result", json={"success": True, "result_files": {"mode": "continuous", "chunks": "2"}})
     d = client.get(f"/api/v1/tasks/{tid}").json()
     assert d["status"] == "DONE" and d["analysis_status"] == "DONE"
+
+
+def test_attribution_backend_is_explicitly_selected(client, monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    tid = _create(client, agent_id="attribution")
+    client.post("/api/v1/agent/heartbeat", json={
+        "agent_id": "attribution", "hostname": "h", "ip_addr": "1.1.1.1",
+    })
+    client.post(f"/api/v1/agent/tasks/{tid}/status", json={
+        "status": "UPLOADING", "reason": "storing",
+    })
+    client.post(f"/api/v1/agent/tasks/{tid}/result", json={
+        "success": True, "result_files": {"pyspy_folded": "pyspy.folded"},
+    })
+
+    nxt = client.get("/api/v1/internal/analysis/next").json()
+    assert nxt["task"]["tid"] == tid
+    out_dir = os.path.join(settings.artifacts_dir, tid)
+    os.makedirs(out_dir, exist_ok=True)
+    tree = {
+        "name": "pyspy all", "value": 100,
+        "children": [{"name": "hot_func", "value": 100, "children": []}],
+    }
+    with open(os.path.join(out_dir, "tree.json"), "w", encoding="utf-8") as f:
+        json.dump(tree, f)
+    client.post(f"/api/v1/internal/analysis/{tid}/result", json={
+        "success": True, "analysis_files": {"tree": "tree.json"},
+    })
+
+    offline = client.post(f"/api/v1/tasks/{tid}/attribution", json={"engine": "offline"})
+    assert offline.status_code == 200
+    assert offline.json()["engine"] == "offline"
+
+    deepseek = client.post(f"/api/v1/tasks/{tid}/attribution", json={"engine": "deepseek"})
+    assert deepseek.status_code == 503
+    assert "DEEPSEEK_API_KEY" in deepseek.json()["detail"]

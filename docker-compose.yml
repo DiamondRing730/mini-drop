@@ -20,11 +20,9 @@ services:
     environment:
       MINIDROP_DATABASE_URL: postgresql+psycopg2://minidrop:minidrop@postgres:5432/minidrop
       MINIDROP_ARTIFACTS_DIR: /data/artifacts
-      # AI attribution backends (optional). Read from a gitignored .env (compose
-      # auto-loads it for ${...} interpolation); empty by default -> heuristic engine.
+      # DeepSeek attribution is optional. Offline attribution needs no key.
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       - md_data:/data
     ports:

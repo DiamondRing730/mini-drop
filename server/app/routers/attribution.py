@@ -5,18 +5,19 @@ POST /api/v1/tasks/{tid}/attribution
   every finding against the raw data, persist the result as the `attribution.json`
   artifact (referenced from result_files["attribution"]), and return it.
 
-The engine prefers a real Claude tool-use loop (when ANTHROPIC_API_KEY + the anthropic
-SDK are present) and falls back to a deterministic analyst that runs the same tools, so
-the feature works with no network and adds no hard build dependency.
+The request explicitly selects either the deterministic offline engine or DeepSeek.
+DeepSeek failures are returned to the caller and never silently fall back to offline.
 """
 import json
 import logging
 import os
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from typing import Literal
 
-from ..attribution.engine import attribute
+from ..attribution.engine import AttributionBackendError, attribute
 from ..attribution.profile import load_profile
 from ..attribution.verifier import verify
 from ..config import settings
@@ -29,6 +30,10 @@ router = APIRouter(prefix="/api/v1", tags=["attribution"])
 logger = logging.getLogger("minidrop.attribution")
 
 
+class AttributionRequest(BaseModel):
+    engine: Literal["offline", "deepseek"] = "offline"
+
+
 def _get_task_or_404(session: Session, tid: str) -> Task:
     task = session.get(Task, tid)
     if task is None or task.deleted:
@@ -37,7 +42,11 @@ def _get_task_or_404(session: Session, tid: str) -> Task:
 
 
 @router.post("/tasks/{tid}/attribution", response_model=dict)
-def run_attribution(tid: str, session: Session = Depends(get_session)):
+def run_attribution(
+    tid: str,
+    req: AttributionRequest | None = None,
+    session: Session = Depends(get_session),
+):
     task = _get_task_or_404(session, tid)
     files = task.result_files or {}
 
@@ -49,7 +58,11 @@ def run_attribution(tid: str, session: Session = Depends(get_session)):
         raise HTTPException(status_code=400, detail="no flamegraph profile to attribute (eBPF tasks are unsupported)")
 
     prof = load_profile(settings.artifacts_dir, tid, task.profiler_type, files)
-    result = attribute(prof)
+    backend = req.engine if req else "offline"
+    try:
+        result = attribute(prof, backend=backend)
+    except AttributionBackendError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     report = verify(prof, result.get("findings", []))
 
     payload = {
@@ -78,7 +91,3 @@ def run_attribution(tid: str, session: Session = Depends(get_session)):
         findings=len(payload["findings"]), verified=report["verified"],
     )
     return payload
-
-
-# Import get_session after defining the router to keep the dependency tidy.
-from ..db import get_session  # noqa: E402

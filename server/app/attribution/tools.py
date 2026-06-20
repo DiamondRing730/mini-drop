@@ -1,8 +1,8 @@
 """The custom tools the attribution analyst may call — its ONLY view of the profile.
 
 Each tool is a pure read over a Profile (built in profile.py from the analyzer's
-artifacts). The same definitions drive both the Claude tool-use loop and the
-deterministic fallback engine, and the verifier re-derives every number the model
+artifacts). The same definitions drive both the DeepSeek tool-use loop and the
+deterministic offline engine, and the verifier re-derives every number the model
 reports from these same accessors — so a claim that doesn't match the data fails.
 
 `submit_attribution` is the terminal tool: the model calls it once to deliver its
@@ -12,9 +12,8 @@ import json
 
 from .profile import Profile, hot_path, top_functions
 
-# Shared system prompt for both LLM backends (Claude and DeepSeek). Lives here, next to
-# the tool definitions it describes, so both engine.py and deepseek.py import it from one
-# place without a circular import.
+# System prompt for the DeepSeek tool-calling backend. It lives beside the tool
+# definitions so the model contract and the executable tools stay in sync.
 SYSTEM_PROMPT = """You are a performance-engineering analyst for the Mini-Drop profiler.
 You are given a CPU/latency profile of a program and must find the root cause of where
 time is being spent, then propose concrete optimizations.
@@ -35,7 +34,7 @@ IMPORTANT: write the `summary`, `evidence`, and `recommendation` fields in Simpl
 Chinese (中文). Keep function names, file:line locations, and numeric values exactly as the
 tools return them — only the surrounding prose should be Chinese."""
 
-# JSON-schema tool definitions sent to the Claude Messages API. Kept minimal and
+# Shared JSON-schema tool definitions. Kept minimal and
 # strict (no free-form data input) so the model cannot smuggle in numbers — it must
 # read them through these tools.
 TOOL_DEFS = [

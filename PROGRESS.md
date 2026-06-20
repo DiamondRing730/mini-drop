@@ -1,12 +1,12 @@
 # Mini-Drop 进度
 
-> 最后更新：基础闭环、eBPF、语言级 py-spy 与 Continuous Profiling 已实现并验证；当前进入交付收尾。
+> 最后更新：基础闭环、三类采集、Continuous Profiling 与智能归因已实现并验证；当前进入交付收尾。
 
 ## 一句话状态
 
 四个组件（web / server / agent / analyzer）+ Postgres 已用 `docker compose` 一键起，
 端到端验证通过：建任务 → 状态机流转 → py-spy 采集 → 分析出火焰图 + 热点 → Web 展示。
-单测 21 个全过、覆盖率 82%；E2E 正常、坏 PID、Agent 离线恢复三条路径均为 `passed`。
+单测 34 个全过、覆盖率 80%；E2E 正常、坏 PID、Agent 离线恢复三条路径均为 `passed`。
 
 ## 已完成 ✅
 
@@ -15,9 +15,9 @@
 | **server** (FastAPI+PG) | 5 张表（含 `profile_chunks`）、任务状态机（每次迁移落库带 reason）、任务 CRUD、Agent 心跳+原子领取（`FOR UPDATE SKIP LOCKED`）、30s 离线检测、审计日志、持续采样时间轴/窗口接口、JSON 结构化日志 | 单测 + 实跑 |
 | **agent** (Python) | 5s 心跳线程 + worker 线程、perf（cpu-clock）、py-spy、bpftrace、/proc 自监控、持续 py-spy 切片、产物写共享 volume | 实跑 |
 | **analyzer** (Python) | 纯 Python stackcollapse + 火焰图 SVG、TopN、tree.json、eBPF 直方图解析、轮询领取 | 单测 + 实跑 |
-| **web** (React+TS+ECharts) | 首页、任务/审计时间线、火焰图、TopN、eBPF 延迟分布、持续采样时间轴和窗口回放 | 构建通过 + 实跑 |
+| **web** (React+TS+ECharts) | 首页、任务/审计时间线、火焰图、TopN、eBPF 延迟分布、持续采样回放、离线/DeepSeek 归因选择与校验面板 | 构建通过 + 实跑 |
 | **infra** | 各组件 Dockerfile、docker-compose（agent: privileged + pid:host）、Makefile（`make demo`）、demo 工作负载 | `compose up` 通过 |
-| **tests** | 单测：状态机 / API / analyzer / eBPF / continuous；E2E：正常路径 + 坏 PID + Agent 离线恢复 | 单测 21/21、E2E 3/3，82% 覆盖 |
+| **tests** | 单测：状态机 / API / analyzer / eBPF / continuous / attribution；E2E：正常路径 + 坏 PID + Agent 离线恢复 | 单测 34/34、E2E 3/3，80% 覆盖 |
 
 ## 实跑验证结果（本机 WSL2 Ubuntu-22.04 + Docker Desktop）
 
@@ -34,7 +34,7 @@
   `GET /tasks/{tid}/timeline` 时间轴 + `GET /tasks/{tid}/window?from&to` **按任意窗口在线合并渲染火焰图**
   （实测子窗口=2 切片=1582 样本，全窗口=5 切片），Web 有时间轴拖选 + 窗口火焰图
 - ✅ **3 条 E2E**（WSL 原生 venv）→ **3 passed**（正常 / 坏PID / Agent 离线恢复）
-- ✅ **单测**：`pytest tests/unit`（WSL Ubuntu 原生 venv）→ **21 passed；覆盖率 82%**（含 eBPF/flame/continuous）
+- ✅ **单测**：`pytest tests/unit` → **34 passed；覆盖率 80%**（含 eBPF/flame/continuous/attribution）
 - ✅ **Agent 离线恢复 + 审计日志**：停 agent → 30s 后 `online=false` 且写 `OFFLINE` 审计；重启 → 3s 内 `online=true` 且写 `RECOVER`。审计轨迹 `REGISTER→OFFLINE→RECOVER` 经新接口 `GET /api/v1/agents/{id}/events` 可见
 
 ## 当前能力边界
@@ -78,7 +78,8 @@ chore:          scaffold repo with README, gitignore and LF normalization
 
 1. **交付收口**：在干净 Ubuntu 22.04 上执行 clone → `make demo` → unit/E2E，保存完整结果。
 2. **设计文档（≤10页）+ 演示视频（≤15min）**。
-3. **智能归因（可选加分）**：结构化输入、受限工具调用、可验证结论和评测报告。
+3. **智能归因已完成**：页面显式选择离线/DeepSeek、受限工具调用、可验证结论；离线基准
+   见 `docs/attribution-evaluation.md`，DeepSeek 指标需配置密钥后显式运行。
 4. （可选）无限常驻与主动停止、数据保留策略、自然语言采集、perf 持续模式、前端打磨。
 
 > ✅ 基础 MVP + 三项必做能力（py-spy / eBPF / Continuous Profiling）+ 3 条 E2E 均已完成并验证。

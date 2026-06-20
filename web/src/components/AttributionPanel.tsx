@@ -1,20 +1,28 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { Attribution } from "../types";
+import type { Attribution, AttributionEngine } from "../types";
 
 // AI smart attribution panel: runs the constrained tool-calling analyst on demand,
 // shows the ranked root-cause findings, and — crucially — the verification report
 // that independently re-checks every number against the raw profile.
 export function AttributionPanel({ tid, initial }: { tid: string; initial: Attribution | null }) {
   const [attr, setAttr] = useState<Attribution | null>(initial);
+  const [engine, setEngine] = useState<AttributionEngine>(initial?.engine === "deepseek" ? "deepseek" : "offline");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+
+  useEffect(() => {
+    if (initial) {
+      setAttr(initial);
+      setEngine(initial.engine === "deepseek" ? "deepseek" : "offline");
+    }
+  }, [initial]);
 
   const run = async () => {
     setBusy(true);
     setErr("");
     try {
-      setAttr(await api.runAttribution(tid));
+      setAttr(await api.runAttribution(tid, engine));
     } catch (e: any) {
       setErr(String(e.message || e));
     } finally {
@@ -22,33 +30,53 @@ export function AttributionPanel({ tid, initial }: { tid: string; initial: Attri
     }
   };
 
+  const controls = (
+    <div className="attr-controls">
+      <label>
+        归因方式
+        <select
+          value={engine}
+          disabled={busy}
+          onChange={(e) => setEngine(e.target.value as AttributionEngine)}
+        >
+          <option value="offline">离线归因（无外部请求）</option>
+          <option value="deepseek">DeepSeek 归因（需要 API Key）</option>
+        </select>
+      </label>
+      <button disabled={busy} onClick={run}>
+        {busy ? "归因分析中…" : attr ? "按所选方式重新归因" : "运行智能归因"}
+      </button>
+    </div>
+  );
+
   if (!attr) {
     return (
       <div>
         <p className="muted">
-          对采集到的火焰图做一次智能归因：分析器把热点结构化喂给一个只能调用自定义只读工具的分析引擎，
-          产出排序后的根因 + 优化建议，并对每条结论用原始数据独立校验。
+          离线归因在本机按固定规则分析热点；DeepSeek 只通过自定义只读工具访问 profile。
+          两种方式都会对结论中的函数和自耗时比例进行独立校验。
         </p>
-        <button disabled={busy} onClick={run}>{busy ? "归因分析中…" : "运行智能归因"}</button>
+        {controls}
         {err && <p className="err" style={{ marginTop: 10 }}>{err}</p>}
       </div>
     );
   }
 
   const v = attr.verification;
-  const engineLabel = attr.engine === "claude"
-    ? `Claude (${attr.model})`
-    : "启发式引擎（无 API Key，离线可演示）";
+  const engineLabel = attr.engine === "deepseek"
+    ? `DeepSeek (${attr.model || "deepseek-chat"})`
+    : "离线归因（确定性规则）";
 
   return (
     <div>
       <div className="attr-head">
-        <span className={`badge ${attr.engine === "claude" ? "b-RUNNING" : "b-NONE"}`}>引擎：{engineLabel}</span>
+        <span className={`badge ${attr.engine === "deepseek" ? "b-RUNNING" : "b-NONE"}`}>引擎：{engineLabel}</span>
         <span className={`badge ${v.failed === 0 ? "b-DONE" : "b-FAILED"}`}>
           校验 {v.verified}/{v.total_findings} 通过（{v.pass_rate}%）
         </span>
-        <button className="ghost" disabled={busy} onClick={run}>{busy ? "重跑中…" : "重新归因"}</button>
       </div>
+      {controls}
+      {err && <p className="err" style={{ marginTop: 10 }}>{err}</p>}
 
       <p style={{ marginTop: 10 }}><b>诊断：</b>{attr.summary}</p>
 
@@ -91,7 +119,7 @@ export function AttributionPanel({ tid, initial }: { tid: string; initial: Attri
             ))}
           </tbody>
         </table>
-        <h4 style={{ marginTop: 10 }}>工具调用轨迹（引擎对 profile 的唯一访问途径）</h4>
+        <h4 style={{ marginTop: 10 }}>工具调用轨迹（归因引擎对 profile 的访问证据）</h4>
         <ul className="timeline">
           {attr.tool_trace.map((t, i) => (
             <li key={i}><code>{t.tool}</code> <span className="muted">{JSON.stringify(t.input)}</span></li>

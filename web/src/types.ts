@@ -80,9 +80,11 @@ export interface AttributionCheck {
   note: string;
 }
 
+export type AttributionEngine = "offline" | "deepseek";
+
 export interface Attribution {
   tid: string;
-  engine: string;            // "claude" | "heuristic"
+  engine: AttributionEngine | "heuristic"; // heuristic is accepted for older saved artifacts
   model: string | null;
   summary: string;
   findings: AttributionFinding[];
