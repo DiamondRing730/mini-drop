@@ -6,6 +6,7 @@ import { TopNChart } from "../components/TopNChart";
 import { EbpfChart } from "../components/EbpfChart";
 import { TimelineChart } from "../components/TimelineChart";
 import { AttributionPanel } from "../components/AttributionPanel";
+import { ComparisonPanel } from "../components/ComparisonPanel";
 
 const TERMINAL = new Set(["DONE", "FAILED"]);
 
@@ -168,6 +169,13 @@ export function TaskDetail({ tid }: { tid: string }) {
               <section className="card span2">
                 <h2>热点 Top{top.top.length}（共 {top.total_samples} 样本 / {top.unique_stacks} 条栈）</h2>
                 <TopNChart data={top} />
+              </section>
+            )}
+
+            {task.analysis_status === "DONE" && (
+              <section className="card span2">
+                <h2>🧪 可验证性能优化闭环</h2>
+                <ComparisonPanel candidate={task} onCompleted={refreshArtifacts} />
               </section>
             )}
 

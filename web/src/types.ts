@@ -112,3 +112,44 @@ export interface Attribution {
     checks: AttributionCheck[];
   };
 }
+
+export interface ComparisonFunction {
+  function: string;
+  baseline_samples: number;
+  candidate_samples: number;
+  baseline_pct: number;
+  candidate_pct: number;
+  delta_pct: number;
+  relative_change_pct: number | null;
+  status: "improved" | "regressed" | "stable";
+  baseline_aliases: string[];
+  candidate_aliases: string[];
+}
+
+export interface PerformanceComparison {
+  verdict: "hotspot_reduced" | "hotspot_increased" | "no_clear_change" | "no_data";
+  summary: string;
+  confidence: "high" | "medium" | "low";
+  change_threshold_pct: number;
+  primary_hotspot: ComparisonFunction | null;
+  functions: ComparisonFunction[];
+  counts: { improved: number; regressed: number; stable: number };
+  limitations: string[];
+  baseline: { tid: string; name: string; profiler_type: string; total_samples: number };
+  candidate: { tid: string; name: string; profiler_type: string; total_samples: number };
+  verification: {
+    total: number;
+    verified: number;
+    failed: number;
+    pass_rate: number;
+    tolerance_pct: number;
+    checks: Array<{
+      function: string;
+      verdict: "pass" | "fail";
+      claimed: { baseline_pct: number; candidate_pct: number; delta_pct: number };
+      actual: { baseline_pct: number; candidate_pct: number; delta_pct: number };
+      note: string;
+    }>;
+  };
+  artifacts: { report: string; diff_flamegraph: string };
+}

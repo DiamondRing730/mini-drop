@@ -172,6 +172,61 @@ def test_artifact_listing_and_nested_download(client):
     assert "attachment" in downloaded.headers.get("content-disposition", "")
 
 
+def _create_analyzed_profile(client, agent_id: str, name: str, hotspot: str, hotspot_samples: int):
+    tid = client.post("/api/v1/tasks", json={
+        "name": name, "target_pid": 43001, "duration_sec": 5,
+        "frequency_hz": 99, "profiler_type": "pyspy", "agent_id": agent_id,
+    }).json()["tid"]
+    hb = client.post("/api/v1/agent/heartbeat", json={
+        "agent_id": agent_id, "hostname": "h", "ip_addr": "1.1.1.1",
+    }).json()
+    assert hb["task"]["tid"] == tid
+    client.post(f"/api/v1/agent/tasks/{tid}/status", json={"status": "UPLOADING", "reason": "done"})
+    client.post(f"/api/v1/agent/tasks/{tid}/result", json={
+        "success": True, "result_files": {"pyspy_folded": "pyspy.folded"},
+    })
+    claimed = client.get("/api/v1/internal/analysis/next").json()
+    assert claimed["task"]["tid"] == tid
+
+    other_samples = 100 - hotspot_samples
+    tree = {
+        "name": "pyspy all", "value": 100,
+        "children": [{"name": "main", "value": 100, "children": [
+            {"name": hotspot, "value": hotspot_samples, "children": []},
+            {"name": "other_work", "value": other_samples, "children": []},
+        ]}],
+    }
+    out_dir = os.path.join(settings.artifacts_dir, tid)
+    os.makedirs(out_dir, exist_ok=True)
+    with open(os.path.join(out_dir, "tree.json"), "w", encoding="utf-8") as f:
+        json.dump(tree, f)
+    client.post(f"/api/v1/internal/analysis/{tid}/result", json={
+        "success": True, "analysis_files": {"tree": "tree.json"},
+    })
+    return tid
+
+
+def test_verified_before_after_comparison_api(client):
+    baseline = _create_analyzed_profile(client, "compare-before", "before", "fib (workload.py:11)", 80)
+    candidate = _create_analyzed_profile(client, "compare-after", "after", "fib (workload.py:12)", 20)
+    response = client.post(f"/api/v1/tasks/{candidate}/comparison", json={"baseline_tid": baseline})
+    assert response.status_code == 200, response.text
+    report = response.json()
+    assert report["verdict"] == "hotspot_reduced"
+    assert report["verification"]["failed"] == 0
+    fib = next(row for row in report["functions"] if row["function"] == "fib")
+    assert fib["baseline_pct"] == 80.0 and fib["candidate_pct"] == 20.0
+
+    artifacts = client.get(f"/api/v1/tasks/{candidate}/artifacts").json()
+    paths = {item["path"] for item in artifacts}
+    assert report["artifacts"]["report"] in paths
+    assert report["artifacts"]["diff_flamegraph"] in paths
+    flame = client.get(
+        f"/api/v1/tasks/{candidate}/artifacts/{report['artifacts']['diff_flamegraph']}"
+    )
+    assert flame.status_code == 200 and flame.text.startswith("<svg")
+
+
 def test_unknown_task_404(client):
     assert client.get("/api/v1/tasks/does-not-exist").status_code == 404
 

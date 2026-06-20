@@ -73,3 +73,11 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .failure-reason { color: #fca5a5; font-size: 11px; margin-top: 3px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .table-scroll { overflow-x: auto; }
 code { word-break: break-all; }
+.comparison-controls { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+.comparison-controls label { min-width: 360px; flex: 1; margin: 0; }
+.comparison-controls select { display: block; width: 100%; margin-top: 4px; }
+.candidate-box { display: flex; flex-direction: column; gap: 5px; min-width: 180px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 7px; }
+.comparison-result { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.comparison-result h3 { margin: 18px 0 8px; }
+.comparison-flame { height: 420px; }
+.comparison-note { font-size: 12px; margin: 6px 0 0; }

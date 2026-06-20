@@ -1,4 +1,4 @@
-import type { Agent, AgentEvent, Artifact, Attribution, AttributionEngine, EbpfDist, TaskDetail, TaskListResponse, TimelineEntry, TopN } from "./types";
+import type { Agent, AgentEvent, Artifact, Attribution, AttributionEngine, EbpfDist, PerformanceComparison, TaskDetail, TaskListResponse, TimelineEntry, TopN } from "./types";
 
 const BASE = "/api/v1";
 
@@ -79,5 +79,10 @@ export const api = {
     j<Attribution>(`${BASE}/tasks/${tid}/attribution`, {
       method: "POST",
       body: JSON.stringify({ engine }),
+    }),
+  compareTasks: (candidateTid: string, baselineTid: string) =>
+    j<PerformanceComparison>(`${BASE}/tasks/${candidateTid}/comparison`, {
+      method: "POST",
+      body: JSON.stringify({ baseline_tid: baselineTid }),
     }),
 };
