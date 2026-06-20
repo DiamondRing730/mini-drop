@@ -69,11 +69,12 @@ services:
       server:
         condition: service_healthy
 
-  # A CPU-bound Python process used as the default profiling target for `make demo`.
+  # Exactly one selectable demo workload runs at a time. The launcher recreates this
+  # container with cpu-before / cpu-after / numeric / io.
   workload:
     image: python:3.12-slim
     container_name: minidrop-workload
-    command: ["python", "/demo/workload.py"]
+    command: ["python", "/demo/workload.py", "--scenario", "${MINIDROP_DEMO_SCENARIO:-cpu-before}"]
     volumes:
       - ./demo:/demo:ro
     restart: unless-stopped

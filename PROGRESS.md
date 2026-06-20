@@ -16,7 +16,7 @@
 | **agent** (Python) | 5s 心跳线程 + worker 线程、perf（cpu-clock）、py-spy、bpftrace、/proc 自监控、持续 py-spy 切片、产物写共享 volume | 实跑 |
 | **analyzer** (Python) | 纯 Python stackcollapse + 火焰图 SVG、TopN、tree.json、eBPF 直方图解析、轮询领取 | 单测 + 实跑 |
 | **web** (React+TS+ECharts) | 首页、任务搜索/筛选/分页、失败原因与一键重试、产物查看下载、任务/审计时间线、火焰图、TopN、eBPF 延迟分布、持续采样回放、离线/DeepSeek 归因选择与校验面板、函数差分图与红绿差分火焰图 | 构建通过 + 实跑 |
-| **infra** | 各组件 Dockerfile、docker-compose（agent: privileged + pid:host）、Makefile（`make demo`）、demo 工作负载 | `compose up` 通过 |
+| **infra** | 各组件 Dockerfile、docker-compose（agent: privileged + pid:host）、4个可独立运行的演示场景（CPU优化前/后、数值循环、IO） | `compose up` + 4场景实跑通过 |
 | **tests** | 单测：状态机 / API / analyzer / eBPF / continuous / attribution / profile comparison / 任务筛选分页 / 重试 / 产物下载；E2E：正常路径 + 坏 PID + Agent 离线恢复 | 单测 41/41、E2E 3/3，约 80% 覆盖 |
 
 ## 实跑验证结果（本机 WSL2 Ubuntu-22.04 + Docker Desktop）
@@ -35,7 +35,8 @@
   （实测子窗口=2 切片=1582 样本，全窗口=5 切片），Web 有时间轴拖选 + 窗口火焰图
 - ✅ **3 条 E2E**（WSL 原生 venv）→ **3 passed**（正常 / 坏PID / Agent 离线恢复）
 - ✅ **任务管理增强（真跑）**：按名称/ID/PID 搜索、状态/采集器筛选和分页可用；真实 `e2e` 任务产物清单与下载大小一致；按原参数重试后采集/分析再次 `DONE`，生成 flamegraph/TopN/tree/原始 folded 共 4 个文件。
-- ✅ **可验证性能优化闭环（真跑）**：真实 py-spy 任务 `2a50a109dde9 → 80bba687beb5` 生成函数差分与红绿差分火焰图；4/4 数值独立复算通过。两次均为未优化负载，系统如实报告首要热点 `fib` 占比上升，不强行生成“优化成功”结论。
+- ✅ **4个独立演示场景（真跑）**：`demo-before`、`demo-after`、`demo-numeric`、`demo-io` 均可单独切换负载、提交一个任务并等待分析 `DONE`；不会一次启动全部演示任务。
+- ✅ **可验证性能优化闭环（真跑）**：相同CPU程序的朴素递归基线 `6c1a5ee9d687` 与 `lru_cache` 优化版 `a9ad226b192d` 均采到989个样本；`fib` 自耗时占比从74.22%降至0%，5/5差分数值独立复算通过，并生成红绿差分火焰图。
 - ✅ **单测**：`pytest tests/unit` → **41 passed；覆盖率约 80%**（含 eBPF/flame/continuous/attribution/comparison/筛选分页/重试/产物下载）
 - ✅ **Agent 离线恢复 + 审计日志**：停 agent → 30s 后 `online=false` 且写 `OFFLINE` 审计；重启 → 3s 内 `online=true` 且写 `RECOVER`。审计轨迹 `REGISTER→OFFLINE→RECOVER` 经新接口 `GET /api/v1/agents/{id}/events` 可见
 
