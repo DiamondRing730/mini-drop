@@ -26,21 +26,21 @@ def verify(prof: Profile, findings: list[dict]) -> dict:
         actual_self = prof.self_samples.get(func)
         if actual_self is None:
             ok = False
-            notes.append(f"function '{func}' is not a self-time hotspot in the profile")
+            notes.append(f"函数 '{func}' 不是 profile 中的自耗时热点")
             actual_pct = None
         else:
             actual_pct = prof.pct(actual_self)
             if claimed is None:
                 ok = False
-                notes.append("no self_pct cited")
+                notes.append("未给出 self_pct")
             elif abs(float(claimed) - actual_pct) > PCT_TOLERANCE:
                 ok = False
                 notes.append(
-                    f"cited {claimed}% but profile shows {actual_pct}% "
-                    f"({actual_self}/{prof.total_samples} samples)"
+                    f"声称 {claimed}%，但 profile 实测为 {actual_pct}%"
+                    f"（{actual_self}/{prof.total_samples} 采样）"
                 )
             else:
-                notes.append(f"verified: {actual_pct}% self-time ({actual_self} samples)")
+                notes.append(f"已核实：自耗时 {actual_pct}%（{actual_self} 采样）")
 
         if ok:
             passed += 1

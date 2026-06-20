@@ -123,25 +123,25 @@ def _run_heuristic(prof: Profile) -> AttributionResult:
         callers = prof.callers_of.get(func, {})
         top_caller = max(callers.items(), key=lambda kv: kv[1])[0] if callers else None
 
-        evidence_bits = [f"{row['self_pct']}% of samples are self-time in {func}"]
+        evidence_bits = [f"{func} 自耗时占比 {row['self_pct']}%"]
         if top_caller:
-            evidence_bits.append(f"reached mainly via {top_caller}")
+            evidence_bits.append(f"主要由 {top_caller} 调入")
         if func in on_path:
-            evidence_bits.append("sits on the hottest root->leaf path")
+            evidence_bits.append("位于最热的 root->leaf 调用路径上")
 
         findings.append({
             "function": func,
             "self_pct": row["self_pct"],
-            "evidence": "; ".join(evidence_bits) + ".",
+            "evidence": "；".join(evidence_bits) + "。",
             "recommendation": _recommend(func, top_caller),
         })
 
-    hottest = findings[0]["function"] if findings else "no dominant function"
+    hottest = findings[0]["function"] if findings else "无明显热点函数"
     pct = findings[0]["self_pct"] if findings else 0
     summary = (
-        f"{summary_obj['total_samples']} samples across {summary_obj['distinct_functions']} "
-        f"functions. Time concentrates in {hottest} ({pct}% self-time)"
-        + (f", reached via the path {' -> '.join(p['func'] for p in path[:4])}." if path else ".")
+        f"共 {summary_obj['total_samples']} 个采样、{summary_obj['distinct_functions']} 个函数；"
+        f"时间集中在 {hottest}（自耗时 {pct}%）"
+        + (f"，调用路径为 {' -> '.join(p['func'] for p in path[:4])}。" if path else "。")
     )
     return AttributionResult(
         engine="heuristic", summary=summary, findings=findings, tool_trace=tool_trace,
@@ -150,19 +150,19 @@ def _run_heuristic(prof: Profile) -> AttributionResult:
 
 def _recommend(func: str, caller: str | None) -> str:
     """A concrete, function-specific optimization hint (heuristic path)."""
-    via = f" The dominant call site is {caller}; " if caller else " "
+    via = f"主要调用点是 {caller}；" if caller else ""
     low = func.lower()
     if "fib" in low or "recur" in low:
-        return (f"{func} dominates self-time; likely naive recursion." + via
-                + "memoize or convert to an iterative form to cut redundant calls.")
+        return (f"{func} 占据大量自耗时，疑似朴素递归。{via}"
+                "建议加记忆化（memoization）或改写为迭代，消除重复调用。")
     if any(k in low for k in ("loop", "crunch", "compute", "warm", "calc")):
-        return (f"{func} is CPU-bound in a tight loop." + via
-                + "vectorize, hoist invariant work out of the loop, or cache results.")
+        return (f"{func} 在紧密循环里属 CPU 密集型。{via}"
+                "建议向量化、把循环不变量外提，或缓存中间结果。")
     if any(k in low for k in ("read", "write", "io", "fetch", "load", "query")):
-        return (f"{func} spends its time on I/O." + via
-                + "batch the calls, add caching, or move the work off the hot path.")
-    return (f"{func} is the top self-time consumer." + via
-            + "profile it in isolation and optimize its inner work or call frequency.")
+        return (f"{func} 的时间主要花在 I/O 上。{via}"
+                "建议批量化调用、增加缓存，或把该工作移出热点路径。")
+    return (f"{func} 是自耗时最高的函数。{via}"
+            "建议单独 profile 它，优化其内部逻辑或调用频率。")
 
 
 def attribute(prof: Profile) -> AttributionResult:

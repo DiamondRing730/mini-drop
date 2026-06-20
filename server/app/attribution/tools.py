@@ -29,7 +29,11 @@ Then call submit_attribution exactly once with ranked findings.
 
 Every finding must cite the function name and the self_pct you actually read from a tool --
 those numbers are independently verified against the raw profile, so do not estimate or
-invent them. Keep recommendations concrete and specific to the function named."""
+invent them. Keep recommendations concrete and specific to the function named.
+
+IMPORTANT: write the `summary`, `evidence`, and `recommendation` fields in Simplified
+Chinese (中文). Keep function names, file:line locations, and numeric values exactly as the
+tools return them — only the surrounding prose should be Chinese."""
 
 # JSON-schema tool definitions sent to the Claude Messages API. Kept minimal and
 # strict (no free-form data input) so the model cannot smuggle in numbers — it must

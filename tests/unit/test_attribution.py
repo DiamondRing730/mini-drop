@@ -105,7 +105,7 @@ def test_verifier_rejects_hallucinated_function():
     report = verify(prof, bogus)
     assert report["failed"] == 1
     assert report["checks"][0]["verdict"] == "fail"
-    assert "not a self-time hotspot" in report["checks"][0]["note"]
+    assert "不是 profile 中的自耗时热点" in report["checks"][0]["note"]
 
 
 def test_verifier_rejects_wrong_percentage():
@@ -114,7 +114,7 @@ def test_verifier_rejects_wrong_percentage():
     bad = [{"function": "fib", "self_pct": 90.0, "evidence": "x", "recommendation": "y"}]
     report = verify(prof, bad)
     assert report["failed"] == 1
-    assert "profile shows 60.0%" in report["checks"][0]["note"]
+    assert "实测为 60.0%" in report["checks"][0]["note"]
 
 
 def test_empty_profile_attributes_gracefully():
