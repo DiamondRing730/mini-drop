@@ -65,6 +65,10 @@ export const api = {
   deleteTask: (tid: string) => j<unknown>(`${BASE}/tasks/${tid}`, { method: "DELETE" }),
   retryTask: (tid: string) =>
     j<{ tid: string; source_tid: string }>(`${BASE}/tasks/${tid}/retry`, { method: "POST" }),
+  stopTask: (tid: string) =>
+    j<{ tid: string; status: string; stop_requested: boolean }>(`${BASE}/tasks/${tid}/stop`, { method: "POST" }),
+  resumeTask: (tid: string) =>
+    j<{ tid: string; source_tid: string }>(`${BASE}/tasks/${tid}/resume`, { method: "POST" }),
   listArtifacts: (tid: string) => j<Artifact[]>(`${BASE}/tasks/${tid}/artifacts`),
   artifactUrl: (tid: string, name: string, download = false) =>
     `${BASE}/tasks/${tid}/artifacts/${encodeArtifactPath(name)}${download ? "?download=true" : ""}`,

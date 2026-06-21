@@ -6,6 +6,21 @@ export interface Agent {
   online: boolean;
   last_heartbeat: string | null;
   self_stats: Record<string, number>;
+  discovery: DiscoveredContainer[];
+}
+
+export interface DiscoveredProcess {
+  pid: number;
+  ppid: number;
+  comm: string;
+  args: string;
+}
+
+export interface DiscoveredContainer {
+  id: string;
+  name: string;
+  image: string;
+  processes: DiscoveredProcess[];
 }
 
 export interface Transition {
@@ -37,6 +52,7 @@ export interface TaskSummary {
   status_reason: string;
   analysis_status: string;
   agent_id: string | null;
+  stop_requested: boolean;
   created_at: string;
 }
 
@@ -57,6 +73,7 @@ export interface Artifact {
 export interface TaskDetail extends TaskSummary {
   duration_sec: number;
   frequency_hz: number;
+  slice_sec: number;
   analysis_reason: string;
   error_message: string;
   result_files: Record<string, string>;

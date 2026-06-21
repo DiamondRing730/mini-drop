@@ -52,6 +52,8 @@ services:
       MINIDROP_PERF_EVENT: cpu-clock
     volumes:
       - md_data:/data
+      # Read-only Docker API used to discover selectable containers and host PIDs.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       # debugfs/tracefs so bpftrace can attach kernel tracepoints
       - /sys/kernel/debug:/sys/kernel/debug:rw
     depends_on:

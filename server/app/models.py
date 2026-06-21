@@ -20,6 +20,8 @@ class Agent(Base):
     last_heartbeat: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Latest self-resource snapshot reported on heartbeat (cpu_pct / rss_kb / io_kbps ...).
     self_stats: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Container/process targets discovered from the agent's host PID namespace.
+    discovery: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -47,6 +49,7 @@ class Task(Base):
 
     # logical-name -> filename, all under <artifacts_dir>/<tid>/
     result_files: Mapped[dict] = mapped_column(JSON, default=dict)
+    stop_requested: Mapped[bool] = mapped_column(Boolean, default=False)
     deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

@@ -34,6 +34,7 @@ th { color: var(--muted); font-weight: 600; }
 .b-UPLOADING { background: #854d0e; color: #fde68a; }
 .b-DONE { background: #14532d; color: #bbf7d0; }
 .b-FAILED { background: #7f1d1d; color: #fecaca; }
+.b-STOPPED { background: #4c1d95; color: #ddd6fe; }
 .b-NONE { background: #2a2e3a; color: var(--muted); }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
 .dot.on { background: #22c55e; } .dot.off { background: #6b7280; }
@@ -77,6 +78,8 @@ code { word-break: break-all; }
 .comparison-controls label { min-width: 360px; flex: 1; margin: 0; }
 .comparison-controls select { display: block; width: 100%; margin-top: 4px; }
 .candidate-box { display: flex; flex-direction: column; gap: 5px; min-width: 180px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 7px; }
+.target-picker { padding: 10px; margin-top: 8px; border: 1px solid var(--border); border-radius: 8px; background: #141722; }
+.target-picker select { width: 100%; }
 .comparison-result { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
 .comparison-result h3 { margin: 18px 0 8px; }
 .comparison-flame { height: 420px; }

@@ -62,3 +62,13 @@ def test_no_transition_out_of_terminal(session):
     transition(session, task, "FAILED", "bad pid")
     with pytest.raises(InvalidTransition):
         transition(session, task, "RUNNING", "retry in place")
+
+
+def test_continuous_task_can_be_stopped(session):
+    task = _new_task(session)
+    task.mode = "continuous"
+    transition(session, task, "RUNNING", "claimed")
+    transition(session, task, "STOPPED", "stopped by user")
+    assert task.status == "STOPPED" and task.end_time is not None
+    with pytest.raises(InvalidTransition):
+        transition(session, task, "RUNNING", "resume in place")

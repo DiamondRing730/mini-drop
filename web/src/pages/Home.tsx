@@ -78,6 +78,7 @@ export function Home() {
             <option value="UPLOADING">UPLOADING</option>
             <option value="DONE">DONE</option>
             <option value="FAILED">FAILED</option>
+            <option value="STOPPED">STOPPED</option>
           </select>
           <select value={profilerFilter} onChange={(e) => { setProfilerFilter(e.target.value); resetPage(); }}>
             <option value="">全部采集器</option>
@@ -106,7 +107,7 @@ function AgentTable({ agents }: { agents: Agent[] }) {
   return (
     <table>
       <thead>
-        <tr><th>状态</th><th>ID / 主机</th><th>IP</th><th>CPU%</th><th>RSS</th></tr>
+        <tr><th>状态</th><th>ID / 主机</th><th>IP</th><th>容器</th><th>CPU%</th><th>RSS</th></tr>
       </thead>
       <tbody>
         {agents.map((a) => (
@@ -114,6 +115,7 @@ function AgentTable({ agents }: { agents: Agent[] }) {
             <td><span className={`dot ${a.online ? "on" : "off"}`} />{a.online ? "在线" : "离线"}</td>
             <td>{a.id}<div className="muted">{a.hostname}</div></td>
             <td>{a.ip_addr}</td>
+            <td>{a.discovery?.length ?? 0}</td>
             <td>{a.self_stats?.cpu_pct ?? "-"}</td>
             <td>{a.self_stats?.rss_kb ? `${Math.round(a.self_stats.rss_kb / 1024)}MB` : "-"}</td>
           </tr>
@@ -132,10 +134,32 @@ function CreateForm({ agents, onCreated }: { agents: Agent[]; onCreated: () => v
   const [agentId, setAgentId] = useState("");
   const [continuous, setContinuous] = useState(false);
   const [slice, setSlice] = useState(10);
+  const [containerId, setContainerId] = useState("");
+  const [processPid, setProcessPid] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   // Continuous mode is py-spy-based in this MVP.
   const effectiveProfiler = continuous ? "pyspy" : profiler;
+  const selectedAgent = agents.find((a) => a.id === agentId) || agents.find((a) => a.online);
+  const containers = selectedAgent?.discovery || [];
+  const selectedContainer = containers.find((c) => c.id === containerId);
+
+  const chooseAgent = (value: string) => {
+    setAgentId(value);
+    setContainerId("");
+    setProcessPid("");
+  };
+
+  const chooseContainer = (value: string) => {
+    if (value && !agentId && selectedAgent) setAgentId(selectedAgent.id);
+    setContainerId(value);
+    setProcessPid("");
+  };
+
+  const chooseProcess = (value: string) => {
+    setProcessPid(value);
+    if (value) setPid(value);
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -176,6 +200,33 @@ function CreateForm({ agents, onCreated }: { agents: Agent[]; onCreated: () => v
       <input value={pid} onChange={(e) => setPid(e.target.value)}
              placeholder={effectiveProfiler === "ebpf" ? "0 = 全系统" : "例如 1234"}
              required={effectiveProfiler !== "ebpf"} />
+      <div className="target-picker">
+        <b style={{ fontSize: 12 }}>从容器进程选择（可选）</b>
+        <div className="row">
+          <div>
+            <label>容器</label>
+            <select value={containerId} onChange={(e) => chooseContainer(e.target.value)}>
+              <option value="">手动输入 PID</option>
+              {containers.map((c) => (
+                <option key={c.id} value={c.id}>{c.name} · {c.image}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label>进程 / PID</label>
+            <select value={processPid} disabled={!selectedContainer}
+                    onChange={(e) => chooseProcess(e.target.value)}>
+              <option value="">选择进程</option>
+              {(selectedContainer?.processes || []).map((p) => (
+                <option key={p.pid} value={String(p.pid)}>{p.pid} · {p.comm || p.args}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {!containers.length && <div className="muted" style={{ fontSize: 11, marginTop: 5 }}>
+          当前 Agent 尚未发现容器；仍可手动填写 PID。
+        </div>}
+      </div>
       <div className="row">
         <div>
           <label>{continuous ? "会话时长 (秒)" : "时长 (秒)"}</label>
@@ -204,7 +255,7 @@ function CreateForm({ agents, onCreated }: { agents: Agent[]; onCreated: () => v
         <option value="ebpf">eBPF（内核 syscall 延迟）</option>
       </select>
       <label>目标 Agent（留空=任意在线）</label>
-      <select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
+      <select value={agentId} onChange={(e) => chooseAgent(e.target.value)}>
         <option value="">任意</option>
         {agents.map((a) => (
           <option key={a.id} value={a.id}>{a.id} {a.online ? "" : "(离线)"}</option>

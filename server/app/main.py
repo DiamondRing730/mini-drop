@@ -9,6 +9,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
+from sqlalchemy import inspect, text
+
 from .db import Base, engine
 from .logging_config import configure_logging, log_event
 from .monitor import offline_monitor
@@ -23,6 +25,17 @@ access_logger = logging.getLogger("minidrop.access")
 async def lifespan(app: FastAPI):
     # Models are imported via routers; create all tables on boot (MVP migration strategy).
     Base.metadata.create_all(engine)
+    # Lightweight additive migrations keep existing demo volumes compatible.
+    columns = {c["name"] for c in inspect(engine).get_columns("tasks")}
+    agent_columns = {c["name"] for c in inspect(engine).get_columns("agents")}
+    with engine.begin() as conn:
+        if "stop_requested" not in columns:
+            conn.execute(text("ALTER TABLE tasks ADD COLUMN stop_requested BOOLEAN NOT NULL DEFAULT FALSE"))
+        if "discovery" not in agent_columns:
+            if engine.dialect.name == "postgresql":
+                conn.execute(text("ALTER TABLE agents ADD COLUMN discovery JSON NOT NULL DEFAULT '[]'::json"))
+            else:
+                conn.execute(text("ALTER TABLE agents ADD COLUMN discovery JSON NOT NULL DEFAULT '[]'"))
     os.makedirs(settings.artifacts_dir, exist_ok=True)
     monitor_task = asyncio.create_task(offline_monitor())
     log_event(logger, "server started", artifacts_dir=settings.artifacts_dir)

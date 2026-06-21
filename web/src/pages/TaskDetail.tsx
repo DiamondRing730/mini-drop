@@ -8,7 +8,7 @@ import { TimelineChart } from "../components/TimelineChart";
 import { AttributionPanel } from "../components/AttributionPanel";
 import { ComparisonPanel } from "../components/ComparisonPanel";
 
-const TERMINAL = new Set(["DONE", "FAILED"]);
+const TERMINAL = new Set(["DONE", "FAILED", "STOPPED"]);
 
 export function TaskDetail({ tid }: { tid: string }) {
   const [task, setTask] = useState<Task | null>(null);
@@ -19,6 +19,26 @@ export function TaskDetail({ tid }: { tid: string }) {
   const [attribution, setAttribution] = useState<Attribution | null>(null);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [error, setError] = useState("");
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+
+  const stopContinuous = async () => {
+    setActionBusy(true); setActionError("");
+    try {
+      await api.stopTask(tid);
+      setTask(await api.getTask(tid));
+    } catch (e: any) { setActionError(String(e.message || e)); }
+    finally { setActionBusy(false); }
+  };
+
+  const resumeContinuous = async () => {
+    setActionBusy(true); setActionError("");
+    try {
+      const result = await api.resumeTask(tid);
+      window.location.hash = `#/task/${result.tid}`;
+    } catch (e: any) { setActionError(String(e.message || e)); }
+    finally { setActionBusy(false); }
+  };
 
   const refreshArtifacts = async () => {
     try {
@@ -108,6 +128,18 @@ export function TaskDetail({ tid }: { tid: string }) {
               <tr><th>分析状态</th><td><span className={`badge b-${task.analysis_status}`}>{task.analysis_status}</span> <span className="muted">{task.analysis_reason}</span></td></tr>
             </tbody>
           </table>
+          {isContinuous && (
+            <div className="actions" style={{ marginTop: 12 }}>
+              {(task.status === "PENDING" || task.status === "RUNNING") &&
+                <button disabled={actionBusy || task.stop_requested} onClick={stopContinuous}>
+                  {task.stop_requested ? "正在停止…" : "停止持续采样"}
+                </button>}
+              {task.status === "STOPPED" &&
+                <button disabled={actionBusy} onClick={resumeContinuous}>续建采样任务</button>}
+              <span className="muted">停止会在当前切片结束后生效，已采集时间轴不会丢失。</span>
+            </div>
+          )}
+          {actionError && <p className="err">{actionError}</p>}
           {task.error_message && <p className="err" style={{ marginTop: 10 }}>{task.error_message}</p>}
         </section>
 

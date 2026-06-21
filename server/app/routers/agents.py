@@ -89,6 +89,7 @@ def heartbeat(req: HeartbeatRequest, session: Session = Depends(get_session)):
     agent.ip_addr = req.ip_addr
     agent.agent_version = req.agent_version
     agent.self_stats = req.self_stats
+    agent.discovery = req.discovery
     agent.online = True
     agent.last_heartbeat = now
 
@@ -97,6 +98,13 @@ def heartbeat(req: HeartbeatRequest, session: Session = Depends(get_session)):
                                detail="heartbeat resumed after being marked offline"))
         log_event(logger, "agent recovered", agent_id=req.agent_id)
 
+    stop_task_ids = session.execute(
+        select(Task.tid).where(
+            Task.agent_id == req.agent_id,
+            Task.status == TaskStatus.RUNNING.value,
+            Task.stop_requested.is_(True),
+        )
+    ).scalars().all()
     claimed = _claim_task(session, req.agent_id)
     session.commit()
 
@@ -114,7 +122,8 @@ def heartbeat(req: HeartbeatRequest, session: Session = Depends(get_session)):
         log_event(logger, "task dispatched", tid=claimed.tid, agent_id=req.agent_id)
 
     return HeartbeatResponse(
-        online=True, heartbeat_interval_sec=settings.heartbeat_interval_sec, task=dispatch
+        online=True, heartbeat_interval_sec=settings.heartbeat_interval_sec, task=dispatch,
+        stop_task_ids=list(stop_task_ids),
     )
 
 
@@ -140,7 +149,13 @@ def report_status(tid: str, req: StatusReport, session: Session = Depends(get_se
 def report_result(tid: str, req: ResultReport, session: Session = Depends(get_session)):
     task = _get_task_or_404(session, tid)
     try:
-        if req.success:
+        if req.stopped or (task.stop_requested and task.mode == TaskMode.CONTINUOUS.value):
+            task.result_files = req.result_files or {}
+            task.stop_requested = False
+            transition(session, task, TaskStatus.STOPPED.value, "continuous session stopped by user")
+            task.analysis_status = AnalysisStatus.DONE.value
+            task.analysis_reason = "stopped session; captured windows remain available"
+        elif req.success:
             # Agent may post the result directly from RUNNING; normalize through UPLOADING.
             if task.status == TaskStatus.RUNNING.value:
                 transition(session, task, TaskStatus.UPLOADING.value, "result received from agent")
@@ -153,6 +168,7 @@ def report_result(tid: str, req: ResultReport, session: Session = Depends(get_se
             else:
                 task.analysis_status = AnalysisStatus.PENDING.value
                 task.analysis_reason = "queued for analysis"
+            task.stop_requested = False
         else:
             task.error_message = req.error_message
             transition(session, task, TaskStatus.FAILED.value,

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from .. import flame
 from ..config import settings
 from ..db import get_session
-from ..enums import TaskStatus
+from ..enums import AnalysisStatus, TaskMode, TaskStatus
 from ..logging_config import log_event
 from ..models import ProfileChunk, Task
 from ..schemas import (
@@ -136,6 +136,53 @@ def retry_task(tid: str, session: Session = Depends(get_session)):
     record_initial(session, task, reason)
     session.commit()
     log_event(logger, "task retried", tid=new_tid, source_tid=source.tid)
+    return {"tid": new_tid, "source_tid": source.tid}
+
+
+@router.post("/tasks/{tid}/stop", response_model=dict)
+def stop_task(tid: str, session: Session = Depends(get_session)):
+    """Request a continuous session to stop at the next slice boundary."""
+    task = _get_task_or_404(session, tid)
+    if task.mode != TaskMode.CONTINUOUS.value:
+        raise HTTPException(status_code=400, detail="only continuous tasks can be stopped")
+    if task.status == TaskStatus.PENDING.value:
+        from ..state import transition
+        transition(session, task, TaskStatus.STOPPED.value, "stopped by user before dispatch")
+        task.analysis_status = AnalysisStatus.DONE.value
+        task.analysis_reason = "stopped before any profiling slice was captured"
+    elif task.status == TaskStatus.RUNNING.value:
+        task.stop_requested = True
+        task.status_reason = "stop requested by user; waiting for current slice"
+    else:
+        raise HTTPException(status_code=409, detail=f"task in {task.status} cannot be stopped")
+    session.commit()
+    log_event(logger, "continuous stop requested", tid=tid, status=task.status)
+    return {"tid": tid, "status": task.status, "stop_requested": task.stop_requested}
+
+
+@router.post("/tasks/{tid}/resume", response_model=dict)
+def resume_task(tid: str, session: Session = Depends(get_session)):
+    """Continue a stopped session as a new task, preserving the old timeline."""
+    source = _get_task_or_404(session, tid)
+    if source.mode != TaskMode.CONTINUOUS.value:
+        raise HTTPException(status_code=400, detail="only continuous tasks can be resumed")
+    if source.status != TaskStatus.STOPPED.value:
+        raise HTTPException(status_code=409, detail="only stopped continuous tasks can be resumed")
+
+    new_tid = short_id()
+    reason = f"resumed from task {source.tid}"
+    task = Task(
+        tid=new_tid, name=source.name, target_pid=source.target_pid,
+        duration_sec=source.duration_sec, frequency_hz=source.frequency_hz,
+        profiler_type=source.profiler_type, mode=source.mode, slice_sec=source.slice_sec,
+        agent_id=source.agent_id, status=TaskStatus.PENDING.value,
+        status_reason=reason, created_at=utcnow(),
+    )
+    session.add(task)
+    session.flush()
+    record_initial(session, task, reason)
+    session.commit()
+    log_event(logger, "continuous task resumed", tid=new_tid, source_tid=source.tid)
     return {"tid": new_tid, "source_tid": source.tid}
 
 

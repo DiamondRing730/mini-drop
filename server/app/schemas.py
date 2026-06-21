@@ -39,12 +39,14 @@ class TaskSummary(BaseModel):
     status_reason: str
     analysis_status: str
     agent_id: str | None
+    stop_requested: bool
     created_at: datetime
 
 
 class TaskDetail(TaskSummary):
     duration_sec: int
     frequency_hz: int
+    slice_sec: int
     analysis_reason: str
     error_message: str
     result_files: dict
@@ -76,6 +78,7 @@ class AgentOut(BaseModel):
     online: bool
     last_heartbeat: datetime | None
     self_stats: dict
+    discovery: list[dict] = Field(default_factory=list)
 
 
 class AgentEventOut(BaseModel):
@@ -94,6 +97,7 @@ class HeartbeatRequest(BaseModel):
     ip_addr: str = ""
     agent_version: str = ""
     self_stats: dict = Field(default_factory=dict)
+    discovery: list[dict] = Field(default_factory=list)
 
 
 class TaskDispatch(BaseModel):
@@ -110,6 +114,7 @@ class HeartbeatResponse(BaseModel):
     online: bool = True
     heartbeat_interval_sec: int
     task: TaskDispatch | None = None
+    stop_task_ids: list[str] = Field(default_factory=list)
 
 
 class StatusReport(BaseModel):
@@ -133,6 +138,7 @@ class TimelineEntry(BaseModel):
 
 class ResultReport(BaseModel):
     success: bool
+    stopped: bool = False
     error_message: str = ""
     result_files: dict = Field(default_factory=dict)
 

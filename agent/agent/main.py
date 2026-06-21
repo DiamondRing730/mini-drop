@@ -17,6 +17,7 @@ from .collectors.ebpf import EbpfCollector
 from .collectors.perf import PerfCollector
 from .collectors.pyspy import PySpyCollector
 from .config import Config
+from .discovery import DiscoveryCache
 from .logging_config import configure_logging
 from .pidstats import PidStatsSampler
 from .runner import run_task
@@ -24,12 +25,17 @@ from .runner import run_task
 logger = logging.getLogger("minidrop.agent")
 
 
-def _worker(task_queue: "queue.Queue[dict]", client, collectors, artifacts_dir) -> None:
+def _worker(task_queue: "queue.Queue[dict]", client, collectors, artifacts_dir,
+            stop_events: dict[str, threading.Event], stop_lock: threading.Lock) -> None:
     while True:
         task = task_queue.get()
         try:
-            run_task(task, client, collectors, artifacts_dir)
+            with stop_lock:
+                event = stop_events.setdefault(task["tid"], threading.Event())
+            run_task(task, client, collectors, artifacts_dir, event)
         finally:
+            with stop_lock:
+                stop_events.pop(task["tid"], None)
             task_queue.task_done()
 
 
@@ -38,15 +44,20 @@ def main() -> None:
     cfg = Config()
     client = ServerClient(cfg.server_url)
     sampler = PidStatsSampler()
+    discovery = DiscoveryCache()
     collectors = {
         "perf": PerfCollector(cfg.perf_event),
         "pyspy": PySpyCollector(),
         "ebpf": EbpfCollector(),
     }
     task_queue: "queue.Queue[dict]" = queue.Queue()
+    stop_events: dict[str, threading.Event] = {}
+    stop_lock = threading.Lock()
 
     threading.Thread(
-        target=_worker, args=(task_queue, client, collectors, cfg.artifacts_dir), daemon=True
+        target=_worker,
+        args=(task_queue, client, collectors, cfg.artifacts_dir, stop_events, stop_lock),
+        daemon=True,
     ).start()
 
     logger.info("agent %s starting (server=%s, perf_event=%s)",
@@ -61,13 +72,20 @@ def main() -> None:
                 "ip_addr": cfg.ip_addr,
                 "agent_version": cfg.agent_version,
                 "self_stats": sampler.sample(),
+                "discovery": discovery.get(),
             }
             resp = client.heartbeat(payload)
             interval = resp.get("heartbeat_interval_sec", interval)
+            for tid in resp.get("stop_task_ids", []):
+                with stop_lock:
+                    stop_events.setdefault(tid, threading.Event()).set()
+                logger.info("stop requested for continuous task %s", tid)
             task = resp.get("task")
             if task:
                 logger.info("claimed task %s (pid=%s, %s)",
                             task["tid"], task["target_pid"], task["profiler_type"])
+                with stop_lock:
+                    stop_events.setdefault(task["tid"], threading.Event())
                 task_queue.put(task)
         except Exception as exc:  # heartbeat must survive transient server/network errors
             logger.warning("heartbeat failed: %s", exc)

@@ -1,12 +1,12 @@
 # Mini-Drop 进度
 
-> 最后更新：基础闭环、三类采集、Continuous Profiling、智能归因与可验证性能优化闭环已实现并验证；当前进入交付收尾。
+> 最后更新：基础闭环、三类采集、可停止/续建 Continuous Profiling、容器/PID 发现、智能归因与可验证性能优化闭环已实现并验证；当前进入交付收尾。
 
 ## 一句话状态
 
 四个组件（web / server / agent / analyzer）+ Postgres 已用 `docker compose` 一键起，
 端到端验证通过：建任务 → 状态机流转 → py-spy 采集 → 分析出火焰图 + 热点 → Web 展示。
-单测 41 个全过、覆盖率约 80%；E2E 正常、坏 PID、Agent 离线恢复三条路径均为 `passed`。
+单测 44 个全过、覆盖率约 80%；E2E 正常、坏 PID、Agent 离线恢复三条路径均为 `passed`。
 
 ## 已完成 ✅
 
@@ -17,7 +17,7 @@
 | **analyzer** (Python) | 纯 Python stackcollapse + 火焰图 SVG、TopN、tree.json、eBPF 直方图解析、轮询领取 | 单测 + 实跑 |
 | **web** (React+TS+ECharts) | 首页、任务搜索/筛选/分页、失败原因与一键重试、产物查看下载、任务/审计时间线、火焰图、TopN、eBPF 延迟分布、持续采样回放、离线/DeepSeek 归因选择与校验面板、函数差分图与红绿差分火焰图 | 构建通过 + 实跑 |
 | **infra** | 各组件 Dockerfile、docker-compose（agent: privileged + pid:host）、4个可独立运行的演示场景（CPU优化前/后、数值循环、IO） | `compose up` + 4场景实跑通过 |
-| **tests** | 单测：状态机 / API / analyzer / eBPF / continuous / attribution / profile comparison / 任务筛选分页 / 重试 / 产物下载；E2E：正常路径 + 坏 PID + Agent 离线恢复 | 单测 41/41、E2E 3/3，约 80% 覆盖 |
+| **tests** | 单测：状态机 / API / analyzer / eBPF / continuous / attribution / profile comparison / 任务筛选分页 / 重试 / 产物下载；E2E：正常路径 + 坏 PID + Agent 离线恢复 | 单测 44/44、E2E 3/3，约 80% 覆盖 |
 
 ## 实跑验证结果（本机 WSL2 Ubuntu-22.04 + Docker Desktop）
 
@@ -33,16 +33,18 @@
 - ✅ **Continuous Profiling（扩展，真跑）**：有限时长 py-spy 会话按 slice 切片采集，40s 会话出 5 个切片；
   `GET /tasks/{tid}/timeline` 时间轴 + `GET /tasks/{tid}/window?from&to` **按任意窗口在线合并渲染火焰图**
   （实测子窗口=2 切片=1582 样本，全窗口=5 切片），Web 有时间轴拖选 + 窗口火焰图
+- ✅ **主动停止/续建（真跑）**：真实持续任务通过心跳接收停止信号，在切片边界进入 `STOPPED`；续建生成新任务并保留旧时间轴。
+- ✅ **容器/PID 发现（真跑）**：Agent 通过只读挂载的 Docker socket 发现 6 个容器及宿主 PID，页面可直接联动选择目标。
 - ✅ **3 条 E2E**（WSL 原生 venv）→ **3 passed**（正常 / 坏PID / Agent 离线恢复）
 - ✅ **任务管理增强（真跑）**：按名称/ID/PID 搜索、状态/采集器筛选和分页可用；真实 `e2e` 任务产物清单与下载大小一致；按原参数重试后采集/分析再次 `DONE`，生成 flamegraph/TopN/tree/原始 folded 共 4 个文件。
 - ✅ **4个独立演示场景（真跑）**：`demo-before`、`demo-after`、`demo-numeric`、`demo-io` 均可单独切换负载、提交一个任务并等待分析 `DONE`；不会一次启动全部演示任务。
 - ✅ **可验证性能优化闭环（真跑）**：相同CPU程序的朴素递归基线 `6c1a5ee9d687` 与 `lru_cache` 优化版 `a9ad226b192d` 均采到989个样本；`fib` 自耗时占比从74.22%降至0%，5/5差分数值独立复算通过，并生成红绿差分火焰图。
-- ✅ **单测**：`pytest tests/unit` → **41 passed；覆盖率约 80%**（含 eBPF/flame/continuous/attribution/comparison/筛选分页/重试/产物下载）
+- ✅ **单测**：`pytest tests/unit` → **44 passed；覆盖率约 80%**（含 eBPF/flame/continuous/停止续建/容器发现/attribution/comparison/筛选分页/重试/产物下载）
 - ✅ **Agent 离线恢复 + 审计日志**：停 agent → 30s 后 `online=false` 且写 `OFFLINE` 审计；重启 → 3s 内 `online=true` 且写 `RECOVER`。审计轨迹 `REGISTER→OFFLINE→RECOVER` 经新接口 `GET /api/v1/agents/{id}/events` 可见
 
 ## 当前能力边界
 
-- Continuous Profiling 当前是 1–3600 秒的有限会话，不是无限常驻服务；尚无主动停止接口和保留/清理策略。
+- Continuous Profiling 当前是 1–3600 秒的有限会话，支持主动停止与续建，但不是无限常驻服务；尚无自动保留/清理策略。
 - 持续模式当前固定使用 py-spy；perf 持续采样属于可选增强。
 - 窗口火焰图以切片为最小粒度，合并所有与窗口重叠的完整切片，因此窗口边缘精度取决于 `slice_sec`。
 - E2E 在 Server 不可达时会被标记为 skipped；验收必须确认输出为 `3 passed`。
@@ -83,7 +85,7 @@ chore:          scaffold repo with README, gitignore and LF normalization
 2. **设计文档（≤10页）+ 演示视频（≤15min）**。
 3. **智能归因已完成**：页面显式选择离线/DeepSeek、受限工具调用、可验证结论；离线基准
    见 `docs/attribution-evaluation.md`，DeepSeek 指标需配置密钥后显式运行。
-4. （可选）无限常驻与主动停止、数据保留策略、自然语言采集、perf 持续模式、前端打磨。
+4. （可选）无限常驻、数据保留策略、自然语言采集、perf 持续模式、前端打磨。
 
 > ✅ 基础 MVP + 三项必做能力（py-spy / eBPF / Continuous Profiling）+ 3 条 E2E 均已完成并验证。
 > 环境提示：WSL Ubuntu 可原生跑 `make` / `pytest`；镜像构建在 Windows 侧或配好 registry mirror 的网络下进行。

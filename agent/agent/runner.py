@@ -2,6 +2,7 @@
 import logging
 import os
 import time
+import threading
 
 from .client import ServerClient
 from .collectors.base import Collector, CollectorError
@@ -9,9 +10,10 @@ from .collectors.base import Collector, CollectorError
 logger = logging.getLogger("minidrop.agent.runner")
 
 
-def run_task(task: dict, client: ServerClient, collectors: dict[str, Collector], artifacts_dir: str) -> None:
+def run_task(task: dict, client: ServerClient, collectors: dict[str, Collector], artifacts_dir: str,
+             stop_event: threading.Event | None = None) -> None:
     if task.get("mode") == "continuous":
-        run_continuous(task, client, collectors, artifacts_dir)
+        run_continuous(task, client, collectors, artifacts_dir, stop_event or threading.Event())
         return
 
     tid = task["tid"]
@@ -38,7 +40,8 @@ def run_task(task: dict, client: ServerClient, collectors: dict[str, Collector],
         client.report_result(tid, False, error=f"agent internal error: {exc}")
 
 
-def run_continuous(task: dict, client: ServerClient, collectors: dict[str, Collector], artifacts_dir: str) -> None:
+def run_continuous(task: dict, client: ServerClient, collectors: dict[str, Collector], artifacts_dir: str,
+                   stop_event: threading.Event) -> None:
     """Resident low-frequency profiling: capture repeated slices and report each as a chunk.
 
     Each slice is a self-contained folded-stack file; the server merges whatever slices fall
@@ -62,7 +65,7 @@ def run_continuous(task: dict, client: ServerClient, collectors: dict[str, Colle
     deadline = time.monotonic() + total
     n = 0
     try:
-        while time.monotonic() < deadline:
+        while time.monotonic() < deadline and not stop_event.is_set():
             start_ts = time.time()
             fname = f"chunk_{int(start_ts)}_{n}.folded"
             try:
@@ -78,6 +81,14 @@ def run_continuous(task: dict, client: ServerClient, collectors: dict[str, Colle
             logger.info("continuous %s slice %d: %d samples", tid, n, samples)
             n += 1
 
+            if stop_event.is_set():
+                break
+
+        if stop_event.is_set():
+            client.report_result(tid, False, stopped=True,
+                                 files={"mode": "continuous", "chunks": str(n)})
+            logger.info("continuous %s stopped after %d slices", tid, n)
+            return
         client.report_status(tid, "UPLOADING", f"continuous session finished ({n} slices)")
         client.report_result(tid, True, files={"mode": "continuous", "chunks": str(n)})
     except Exception as exc:

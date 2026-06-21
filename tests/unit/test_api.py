@@ -267,6 +267,63 @@ def test_continuous_chunks_timeline_and_window(client):
     assert d["status"] == "DONE" and d["analysis_status"] == "DONE"
 
 
+def test_continuous_stop_signal_stopped_result_and_resume(client):
+    created = client.post("/api/v1/tasks", json={
+        "name": "stop-resume", "target_pid": 555, "duration_sec": 120,
+        "frequency_hz": 99, "profiler_type": "pyspy", "mode": "continuous",
+        "slice_sec": 5, "agent_id": "stop-agent",
+    })
+    tid = created.json()["tid"]
+    discovery = [{
+        "id": "abc123", "name": "workload", "image": "python:3.12",
+        "processes": [{"pid": 555, "ppid": 1, "comm": "python", "args": "python app.py"}],
+    }]
+    hb = client.post("/api/v1/agent/heartbeat", json={
+        "agent_id": "stop-agent", "hostname": "h", "ip_addr": "1.1.1.1",
+        "discovery": discovery,
+    }).json()
+    assert hb["task"]["tid"] == tid
+    assert client.get("/api/v1/agents").json()[-1]["discovery"] == discovery
+
+    stopped = client.post(f"/api/v1/tasks/{tid}/stop")
+    assert stopped.status_code == 200 and stopped.json()["stop_requested"] is True
+    hb2 = client.post("/api/v1/agent/heartbeat", json={
+        "agent_id": "stop-agent", "hostname": "h", "ip_addr": "1.1.1.1",
+    }).json()
+    assert tid in hb2["stop_task_ids"]
+
+    result = client.post(f"/api/v1/agent/tasks/{tid}/result", json={
+        "success": False, "stopped": True,
+        "result_files": {"mode": "continuous", "chunks": "3"},
+    })
+    assert result.status_code == 200
+    detail = client.get(f"/api/v1/tasks/{tid}").json()
+    assert detail["status"] == "STOPPED"
+    assert detail["analysis_status"] == "DONE"
+    assert detail["stop_requested"] is False
+
+    resumed = client.post(f"/api/v1/tasks/{tid}/resume")
+    assert resumed.status_code == 200
+    new_tid = resumed.json()["tid"]
+    new_task = client.get(f"/api/v1/tasks/{new_tid}").json()
+    assert new_task["status"] == "PENDING" and new_task["mode"] == "continuous"
+    assert new_task["target_pid"] == 555 and new_task["slice_sec"] == 5
+    assert new_task["status_reason"] == f"resumed from task {tid}"
+
+
+def test_pending_continuous_stop_and_oneshot_rejection(client):
+    pending = client.post("/api/v1/tasks", json={
+        "target_pid": 556, "profiler_type": "pyspy", "mode": "continuous",
+        "agent_id": "never-online",
+    }).json()["tid"]
+    assert client.post(f"/api/v1/tasks/{pending}/stop").status_code == 200
+    assert client.get(f"/api/v1/tasks/{pending}").json()["status"] == "STOPPED"
+
+    oneshot = _create(client, agent_id="oneshot-stop")
+    rejected = client.post(f"/api/v1/tasks/{oneshot}/stop")
+    assert rejected.status_code == 400
+
+
 def test_attribution_backend_is_explicitly_selected(client, monkeypatch):
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     tid = _create(client, agent_id="attribution")

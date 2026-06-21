@@ -8,6 +8,7 @@ class TaskStatus(str, enum.Enum):
     UPLOADING = "UPLOADING"  # collection finished, agent is storing the artifact
     DONE = "DONE"            # artifact stored, ready for analysis
     FAILED = "FAILED"        # terminal failure (see status_reason / error_message)
+    STOPPED = "STOPPED"      # continuous session actively stopped by the user
 
 
 class AnalysisStatus(str, enum.Enum):
@@ -26,11 +27,12 @@ class ProfilerType(str, enum.Enum):
 
 # from-state -> set of allowed to-states. Terminal states have no outgoing edges.
 ALLOWED_TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
-    TaskStatus.PENDING: {TaskStatus.RUNNING, TaskStatus.FAILED},
-    TaskStatus.RUNNING: {TaskStatus.UPLOADING, TaskStatus.FAILED},
-    TaskStatus.UPLOADING: {TaskStatus.DONE, TaskStatus.FAILED},
+    TaskStatus.PENDING: {TaskStatus.RUNNING, TaskStatus.FAILED, TaskStatus.STOPPED},
+    TaskStatus.RUNNING: {TaskStatus.UPLOADING, TaskStatus.FAILED, TaskStatus.STOPPED},
+    TaskStatus.UPLOADING: {TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.STOPPED},
     TaskStatus.DONE: set(),
     TaskStatus.FAILED: set(),
+    TaskStatus.STOPPED: set(),
 }
 
 

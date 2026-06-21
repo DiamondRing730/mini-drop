@@ -44,7 +44,7 @@ def transition(session: Session, task: Task, to_status: str, reason: str) -> Non
     task.status_reason = reason
     if to == TaskStatus.RUNNING and task.begin_time is None:
         task.begin_time = now
-    if to in (TaskStatus.DONE, TaskStatus.FAILED):
+    if to in (TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.STOPPED):
         task.end_time = now
 
     session.add(

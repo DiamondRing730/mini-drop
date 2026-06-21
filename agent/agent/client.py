@@ -33,10 +33,12 @@ class ServerClient:
         r.raise_for_status()
         return r.json()
 
-    def report_result(self, tid: str, success: bool, error: str = "", files: dict | None = None) -> dict:
+    def report_result(self, tid: str, success: bool, error: str = "", files: dict | None = None,
+                      stopped: bool = False) -> dict:
         r = self.session.post(
             f"{self.base_url}/api/v1/agent/tasks/{tid}/result",
-            json={"success": success, "error_message": error, "result_files": files or {}},
+            json={"success": success, "stopped": stopped,
+                  "error_message": error, "result_files": files or {}},
             timeout=self.timeout,
         )
         r.raise_for_status()
