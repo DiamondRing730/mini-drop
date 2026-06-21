@@ -71,6 +71,24 @@ def _claim_task(session: Session, agent_id: str) -> Task | None:
     return task
 
 
+def _recover_task(session: Session, agent_id: str, active_task_ids: list[str]) -> Task | None:
+    """Redispatch a claimed task that disappeared from a restarted Agent process."""
+    stmt = select(Task).where(
+        Task.agent_id == agent_id,
+        Task.status == TaskStatus.RUNNING.value,
+        Task.deleted.is_(False),
+    )
+    if active_task_ids:
+        stmt = stmt.where(Task.tid.not_in(active_task_ids))
+    task = session.execute(
+        stmt.order_by(Task.begin_time, Task.created_at).limit(1).with_for_update(skip_locked=True)
+    ).scalars().first()
+    if task is not None:
+        task.status_reason = f"redispatched after agent {agent_id} worker restart"
+        log_event(logger, "running task recovered", tid=task.tid, agent_id=agent_id)
+    return task
+
+
 @router.post("/agent/heartbeat", response_model=HeartbeatResponse)
 def heartbeat(req: HeartbeatRequest, session: Session = Depends(get_session)):
     now = utcnow()
@@ -103,9 +121,12 @@ def heartbeat(req: HeartbeatRequest, session: Session = Depends(get_session)):
             Task.agent_id == req.agent_id,
             Task.status == TaskStatus.RUNNING.value,
             Task.stop_requested.is_(True),
+            Task.deleted.is_(False),
         )
     ).scalars().all()
-    claimed = _claim_task(session, req.agent_id)
+    claimed = _recover_task(session, req.agent_id, req.active_task_ids)
+    if claimed is None:
+        claimed = _claim_task(session, req.agent_id)
     session.commit()
 
     dispatch = None

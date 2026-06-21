@@ -98,6 +98,9 @@ class HeartbeatRequest(BaseModel):
     agent_version: str = ""
     self_stats: dict = Field(default_factory=dict)
     discovery: list[dict] = Field(default_factory=list)
+    # Tasks currently queued or executing in this Agent process. An empty list after
+    # a restart lets the server safely redispatch previously claimed RUNNING tasks.
+    active_task_ids: list[str] = Field(default_factory=list)
 
 
 class TaskDispatch(BaseModel):

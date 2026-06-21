@@ -103,6 +103,43 @@ def test_soft_delete(client):
     assert all(t["tid"] != tid for t in client.get("/api/v1/tasks").json()["items"])
 
 
+def test_active_task_cannot_be_deleted(client):
+    tid = _create(client, agent_id="delete-guard")
+    claimed = client.post("/api/v1/agent/heartbeat", json={
+        "agent_id": "delete-guard", "hostname": "h", "ip_addr": "1.1.1.1",
+    }).json()
+    assert claimed["task"]["tid"] == tid
+    rejected = client.delete(f"/api/v1/tasks/{tid}")
+    assert rejected.status_code == 409
+    assert "active tasks cannot be deleted" in rejected.json()["detail"]
+    assert client.get(f"/api/v1/tasks/{tid}").json()["status"] == "RUNNING"
+
+
+def test_agent_restart_redispatches_missing_running_task(client):
+    tid = _create(client, agent_id="restart-recovery")
+    first = client.post("/api/v1/agent/heartbeat", json={
+        "agent_id": "restart-recovery", "hostname": "h", "ip_addr": "1.1.1.1",
+        "active_task_ids": [],
+    }).json()
+    assert first["task"]["tid"] == tid
+
+    # A healthy process reports the task as active, so it must not be duplicated.
+    healthy = client.post("/api/v1/agent/heartbeat", json={
+        "agent_id": "restart-recovery", "hostname": "h", "ip_addr": "1.1.1.1",
+        "active_task_ids": [tid],
+    }).json()
+    assert healthy["task"] is None
+
+    # A fresh Agent process starts with an empty active set and receives the orphan.
+    restarted = client.post("/api/v1/agent/heartbeat", json={
+        "agent_id": "restart-recovery", "hostname": "h", "ip_addr": "1.1.1.1",
+        "active_task_ids": [],
+    }).json()
+    assert restarted["task"]["tid"] == tid
+    detail = client.get(f"/api/v1/tasks/{tid}").json()
+    assert "worker restart" in detail["status_reason"]
+
+
 def test_task_list_search_filter_and_pagination(client):
     marker = "search-suite-unique"
     first = client.post("/api/v1/tasks", json={

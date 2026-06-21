@@ -323,7 +323,10 @@ function TaskTable({ tasks, onChange, onRetried }: {
                 <td><div className="actions">
                   {(t.status === "DONE" || t.status === "FAILED") &&
                     <button className="ghost" onClick={() => retry(t.tid)}>重试</button>}
-                  <button className="ghost" onClick={() => del(t.tid)}>删除</button>
+                  <button className="ghost"
+                          disabled={t.status === "RUNNING" || t.status === "UPLOADING"}
+                          title={t.status === "RUNNING" || t.status === "UPLOADING" ? "运行中任务请先停止或等待完成" : "删除任务"}
+                          onClick={() => del(t.tid)}>删除</button>
                 </div></td>
               </tr>
             ))}

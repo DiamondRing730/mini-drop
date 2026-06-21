@@ -103,6 +103,11 @@ def get_task(tid: str, session: Session = Depends(get_session)):
 @router.delete("/tasks/{tid}", response_model=dict)
 def delete_task(tid: str, session: Session = Depends(get_session)):
     task = _get_task_or_404(session, tid)
+    if task.status in {TaskStatus.RUNNING.value, TaskStatus.UPLOADING.value}:
+        raise HTTPException(
+            status_code=409,
+            detail="active tasks cannot be deleted; stop the continuous task or wait for completion",
+        )
     task.deleted = True
     session.commit()
     log_event(logger, "task soft-deleted", tid=tid)

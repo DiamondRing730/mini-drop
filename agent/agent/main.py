@@ -26,16 +26,22 @@ logger = logging.getLogger("minidrop.agent")
 
 
 def _worker(task_queue: "queue.Queue[dict]", client, collectors, artifacts_dir,
-            stop_events: dict[str, threading.Event], stop_lock: threading.Lock) -> None:
+            stop_events: dict[str, threading.Event], active_tasks: set[str],
+            control_lock: threading.Lock) -> None:
     while True:
         task = task_queue.get()
         try:
-            with stop_lock:
+            with control_lock:
                 event = stop_events.setdefault(task["tid"], threading.Event())
             run_task(task, client, collectors, artifacts_dir, event)
+        except Exception:
+            # One failed report/collector must never kill the only worker thread.
+            # Removing the task from active_tasks lets the next heartbeat recover it.
+            logger.exception("task %s escaped the runner; worker remains alive", task.get("tid"))
         finally:
-            with stop_lock:
+            with control_lock:
                 stop_events.pop(task["tid"], None)
+                active_tasks.discard(task["tid"])
             task_queue.task_done()
 
 
@@ -52,11 +58,13 @@ def main() -> None:
     }
     task_queue: "queue.Queue[dict]" = queue.Queue()
     stop_events: dict[str, threading.Event] = {}
-    stop_lock = threading.Lock()
+    active_tasks: set[str] = set()
+    control_lock = threading.Lock()
 
     threading.Thread(
         target=_worker,
-        args=(task_queue, client, collectors, cfg.artifacts_dir, stop_events, stop_lock),
+        args=(task_queue, client, collectors, cfg.artifacts_dir,
+              stop_events, active_tasks, control_lock),
         daemon=True,
     ).start()
 
@@ -66,6 +74,8 @@ def main() -> None:
     while True:
         interval = cfg.heartbeat_interval_sec
         try:
+            with control_lock:
+                active_snapshot = sorted(active_tasks)
             payload = {
                 "agent_id": cfg.agent_id,
                 "hostname": cfg.hostname,
@@ -73,18 +83,20 @@ def main() -> None:
                 "agent_version": cfg.agent_version,
                 "self_stats": sampler.sample(),
                 "discovery": discovery.get(),
+                "active_task_ids": active_snapshot,
             }
             resp = client.heartbeat(payload)
             interval = resp.get("heartbeat_interval_sec", interval)
             for tid in resp.get("stop_task_ids", []):
-                with stop_lock:
+                with control_lock:
                     stop_events.setdefault(tid, threading.Event()).set()
                 logger.info("stop requested for continuous task %s", tid)
             task = resp.get("task")
             if task:
                 logger.info("claimed task %s (pid=%s, %s)",
                             task["tid"], task["target_pid"], task["profiler_type"])
-                with stop_lock:
+                with control_lock:
+                    active_tasks.add(task["tid"])
                     stop_events.setdefault(task["tid"], threading.Event())
                 task_queue.put(task)
         except Exception as exc:  # heartbeat must survive transient server/network errors
