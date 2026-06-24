@@ -83,7 +83,7 @@ chore:          scaffold repo with README, gitignore and LF normalization
 ## 下一步（按优先级）
 
 1. **交付收口**：在干净 Ubuntu 22.04 上执行 clone → `make demo` → unit/E2E，保存完整结果。
-2. **设计文档（≤10页）+ 演示视频（≤15min）**。
+2. **设计文档已按 9 页结构生成 Word（待本机检查并导出 PDF）**；继续完成 ≤15min 演示视频。
 3. **智能归因已完成**：页面显式选择离线/DeepSeek、受限工具调用、可验证结论；离线基准
    见 `docs/attribution-evaluation.md`，DeepSeek 指标需配置密钥后显式运行。
 4. （可选）无限常驻、数据保留策略、自然语言采集、perf 持续模式、前端打磨。

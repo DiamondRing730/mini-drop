@@ -1,0 +1,269 @@
+{
+  "synthetic_offline": [
+    {
+      "engine": "offline",
+      "top1_ok": true,
+      "top_func": "fib",
+      "gt_func": "fib",
+      "num_err": 0.0,
+      "verified": 3,
+      "total": 3,
+      "pass_rate": 100.0
+    },
+    {
+      "engine": "offline",
+      "top1_ok": true,
+      "top_func": "crunch_numbers",
+      "gt_func": "crunch_numbers",
+      "num_err": 0.0,
+      "verified": 3,
+      "total": 3,
+      "pass_rate": 100.0
+    },
+    {
+      "engine": "offline",
+      "top1_ok": true,
+      "top_func": "crunch_numbers",
+      "gt_func": "crunch_numbers",
+      "num_err": 0.0,
+      "verified": 3,
+      "total": 3,
+      "pass_rate": 100.0
+    },
+    {
+      "engine": "offline",
+      "top1_ok": true,
+      "top_func": "read_file",
+      "gt_func": "read_file",
+      "num_err": 0.0,
+      "verified": 3,
+      "total": 3,
+      "pass_rate": 100.0
+    },
+    {
+      "engine": "offline",
+      "top1_ok": true,
+      "top_func": "f1",
+      "gt_func": "f1",
+      "num_err": 0.0,
+      "verified": 3,
+      "total": 3,
+      "pass_rate": 100.0
+    }
+  ],
+  "synthetic_deepseek": [
+    {
+      "engine": "deepseek",
+      "top1_ok": true,
+      "top_func": "fib",
+      "gt_func": "fib",
+      "num_err": 0.0,
+      "verified": 3,
+      "total": 3,
+      "pass_rate": 100.0
+    },
+    {
+      "engine": "deepseek",
+      "top1_ok": true,
+      "top_func": "crunch_numbers",
+      "gt_func": "crunch_numbers",
+      "num_err": 0.0,
+      "verified": 3,
+      "total": 3,
+      "pass_rate": 100.0
+    },
+    {
+      "engine": "deepseek",
+      "top1_ok": true,
+      "top_func": "crunch_numbers",
+      "gt_func": "crunch_numbers",
+      "num_err": 0.0,
+      "verified": 2,
+      "total": 2,
+      "pass_rate": 100.0
+    },
+    {
+      "engine": "deepseek",
+      "top1_ok": true,
+      "top_func": "read_file",
+      "gt_func": "read_file",
+      "num_err": 0.0,
+      "verified": 3,
+      "total": 3,
+      "pass_rate": 100.0
+    },
+    {
+      "engine": "deepseek",
+      "top1_ok": true,
+      "top_func": "f1",
+      "gt_func": "f1",
+      "num_err": 0.0,
+      "verified": 5,
+      "total": 5,
+      "pass_rate": 100.0
+    }
+  ],
+  "adversarial": {
+    "rows": [
+      {
+        "label": "真话·首热点 fib=74.0",
+        "expect": "pass",
+        "verdict": "pass",
+        "correct": true
+      },
+      {
+        "label": "真话·容差内 fib=74.6",
+        "expect": "pass",
+        "verdict": "pass",
+        "correct": true
+      },
+      {
+        "label": "真话·次热点 crunch=16.0",
+        "expect": "pass",
+        "verdict": "pass",
+        "correct": true
+      },
+      {
+        "label": "谎言·虚构函数 ghost=50",
+        "expect": "fail",
+        "verdict": "fail",
+        "correct": true
+      },
+      {
+        "label": "谎言·虚高 fib=95",
+        "expect": "fail",
+        "verdict": "fail",
+        "correct": true
+      },
+      {
+        "label": "谎言·虚低 fib=30",
+        "expect": "fail",
+        "verdict": "fail",
+        "correct": true
+      },
+      {
+        "label": "谎言·缺数字 fib=None",
+        "expect": "fail",
+        "verdict": "fail",
+        "correct": true
+      },
+      {
+        "label": "谎言·越界 fib=75.5",
+        "expect": "fail",
+        "verdict": "fail",
+        "correct": true
+      }
+    ],
+    "tp": 5,
+    "fp": 0,
+    "tn": 3,
+    "fn": 0,
+    "recall": 100.0,
+    "specificity": 100.0,
+    "precision": 100.0,
+    "accuracy": 100.0
+  },
+  "live": [
+    {
+      "name": "demo-cpu-after-optimized",
+      "scores": [
+        {
+          "engine": "offline",
+          "top1_ok": true,
+          "top_func": "warm_path",
+          "gt_func": "warm_path",
+          "num_err": 0.0,
+          "verified": 3,
+          "total": 3,
+          "pass_rate": 100.0
+        },
+        {
+          "engine": "deepseek",
+          "top1_ok": true,
+          "top_func": "warm_path",
+          "gt_func": "warm_path",
+          "num_err": 0.0,
+          "verified": 3,
+          "total": 3,
+          "pass_rate": 100.0
+        }
+      ]
+    },
+    {
+      "name": "demo-cpu-after-optimized",
+      "scores": [
+        {
+          "engine": "offline",
+          "top1_ok": true,
+          "top_func": "warm_path",
+          "gt_func": "warm_path",
+          "num_err": 0.0,
+          "verified": 3,
+          "total": 3,
+          "pass_rate": 100.0
+        },
+        {
+          "engine": "deepseek",
+          "top1_ok": true,
+          "top_func": "warm_path",
+          "gt_func": "warm_path",
+          "num_err": 0.0,
+          "verified": 3,
+          "total": 3,
+          "pass_rate": 100.0
+        }
+      ]
+    },
+    {
+      "name": "demo-cpu-before-baseline",
+      "scores": [
+        {
+          "engine": "offline",
+          "top1_ok": true,
+          "top_func": "fib",
+          "gt_func": "fib",
+          "num_err": 0.0,
+          "verified": 3,
+          "total": 3,
+          "pass_rate": 100.0
+        },
+        {
+          "engine": "deepseek",
+          "top1_ok": true,
+          "top_func": "fib",
+          "gt_func": "fib",
+          "num_err": 0.0,
+          "verified": 4,
+          "total": 4,
+          "pass_rate": 100.0
+        }
+      ]
+    },
+    {
+      "name": "pyspy-pid68085",
+      "scores": [
+        {
+          "engine": "offline",
+          "top1_ok": true,
+          "top_func": "warm_path",
+          "gt_func": "warm_path",
+          "num_err": 0.0,
+          "verified": 3,
+          "total": 3,
+          "pass_rate": 100.0
+        },
+        {
+          "engine": "deepseek",
+          "top1_ok": true,
+          "top_func": "warm_path",
+          "gt_func": "warm_path",
+          "num_err": 0.0,
+          "verified": 4,
+          "total": 4,
+          "pass_rate": 100.0
+        }
+      ]
+    }
+  ],
+  "has_key": true
+}

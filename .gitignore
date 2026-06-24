@@ -33,5 +33,9 @@ perf.data
 build.log
 *.log
 
+# Local document render QA outputs
+docs/.tmp-render/
+docs/design-render-*/
+
 # Local secrets (AI attribution API keys) — never commit
 .env
